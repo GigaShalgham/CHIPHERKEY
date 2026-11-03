@@ -10,6 +10,7 @@ java {
 kotlin {
     compilerOptions {
         freeCompilerArgs.add("-Xexplicit-api=warning")
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 

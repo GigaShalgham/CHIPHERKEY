@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
 
 android {
@@ -26,9 +28,10 @@ dependencies {
     api(project(":core:common"))
     api(project(":core:keys"))
 
-    // Annotation-only usage: the Hilt module classes defined here are
-    // aggregated by the application's Hilt compiler pass.
+    // The @Module here is aggregated into the app's Hilt component graph;
+    // the module-level compiler pass emits the aggregation metadata.
     implementation(libs.hilt.android)
+    ksp(libs.hilt.android.compiler)
 
     testImplementation(libs.junit)
 }
