@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CipherKey</string>
+    <string name="tagline">Encrypted communication layer for your keyboard</string>
+    <string name="nav_onboarding">Onboarding</string>
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_contacts">Contacts</string>
+    <string name="nav_settings">Security settings</string>
+    <string name="nav_about">About</string>
+</resources>
