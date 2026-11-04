@@ -39,19 +39,21 @@ principle V applies to release claims).
 
 ## Phase 4: User Story 2 — CI hardening (P1)
 
-- [ ] T013 Add `gradle/actions/setup-gradle@v4` caching to the workflow
-- [ ] T014 Add `gradle/actions/wrapper-validation@v4`
-- [ ] T015 Add gitleaks secret-scan job scanning full history
+- [x] T013 Add `gradle/actions/setup-gradle@v4` caching to the workflow
+- [x] T014 Add `gradle/actions/wrapper-validation@v4`
+- [x] T015 Add gitleaks secret-scan job scanning full history
 
 ## Phase 5: User Story 3 — v0.1.0-alpha release (P1)
 
-- [ ] T016 Add env-based signing config to `app/build.gradle.kts`
+- [x] T016 Add env-based signing config to `app/build.gradle.kts`
       (`CK_KEYSTORE_PROPERTIES` or gitignored `keystore.properties`);
       disable minification for the alpha with documented rationale
-- [ ] T017 Generate the release keystore OUTSIDE the repository
+- [x] T017 Generate the release keystore OUTSIDE the repository
       (RSA 4096, 10000 days); record its SHA-256 fingerprint
-- [ ] T018 Build `assembleRelease`; verify with `aapt2 dump badging` and
+- [x] T018 Build `assembleRelease`; verify with `aapt2 dump badging` and
       `apksigner verify --print-certs`; compute SHA-256
+      (cert SHA-256 24870e1b6a9bca5b369ab09fc9401f8d31533b285d0788ec252d485a5a342cc4;
+      APK SHA-256 7df7add9517cd5a7969566773c25e5a06266d149fb8043c59e83e33503f30184)
 - [ ] T019 Tag `v0.1.0` on the verified `main` commit
 - [ ] T020 Create the GitHub pre-release with honest notes and upload
       the APK asset
@@ -59,11 +61,11 @@ principle V applies to release claims).
 
 ## Phase 6: User Story 4 — community health files (P2)
 
-- [ ] T022 Add `CHANGELOG.md` with `[0.1.0]` entry matching the report
-- [ ] T023 Add `CODE_OF_CONDUCT.md` (Contributor Covenant v2.1)
-- [ ] T024 Add issue templates (bug report, feature request) and a PR
+- [x] T022 Add `CHANGELOG.md` with `[0.1.0]` entry matching the report
+- [x] T023 Add `CODE_OF_CONDUCT.md` (Contributor Covenant v2.1)
+- [x] T024 Add issue templates (bug report, feature request) and a PR
       template
-- [ ] T025 Update README: community file links, truthful badges only
+- [x] T025 Update README: community file links, truthful badges only
 
 ## Phase 7: Verification and finalization
 
