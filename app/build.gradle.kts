@@ -1,9 +1,26 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+}
+
+// Release signing: reads a properties file whose path comes from the
+// CK_KEYSTORE_PROPERTIES environment variable (maintainer machines) or
+// falls back to keystore.properties next to settings.gradle.kts
+// (gitignored). CI has neither, so CI release builds stay unsigned —
+// only maintainer-published GitHub Releases carry signed artifacts.
+val keystorePropertiesFile: File = System.getenv("CK_KEYSTORE_PROPERTIES")
+    ?.let { File(it) }
+    ?: rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
 }
 
 android {
@@ -22,19 +39,37 @@ android {
         }
     }
 
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                storeFile = File(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
         }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // v0.1.0-alpha: minification intentionally disabled. No on-device
+            // verification exists yet, and R8/resource-shrinking would add an
+            // unverified transformation layer on top of an unverified build.
+            // Re-evaluate once instrumented/smoke testing exists (tracked in
+            // the engineering report, remaining work).
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // NOTE: release builds are unsigned until a publishing signing
-            // configuration is added. See docs/RELEASING notes in README.
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+            // NOTE: without a signing config, release builds are unsigned.
         }
     }
 
