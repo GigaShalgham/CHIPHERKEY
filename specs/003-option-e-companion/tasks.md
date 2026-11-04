@@ -71,5 +71,9 @@ verification (device acceptance is the maintainer's P1/P2 gate).
       toolbar entry visible, round-trip byte-exact, replacement works,
       fuzz on-device, Samsung Keyboard untouched)
 - [ ] T022 P2 device acceptance in two messenger apps + fallback ladder
-- [ ] T023 v0.2.0 tag + GitHub release (only after T021/T022)
+- [x] T023 v0.2.0 tag + GitHub release (only after T021/T022)
+      (done ahead of the device gate on 2026-11-04 at the maintainer's
+      request: tag `v0.2.0-alpha` + a clearly labeled device-testing
+      GitHub release with both APKs are published; the stable `v0.2.0`
+      tag still waits for T021/T022)
 - [ ] T024 Quick Settings tile (report phase 4, evidence-gated)

@@ -5,7 +5,7 @@ All notable changes to CipherKey are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0-alpha] - unreleased (device-testing build, no GitHub release yet)
+## [0.2.0-alpha] - 2026-11-04 (device-testing pre-release, tag `v0.2.0-alpha`)
 
 Companion architecture (Option E, spec 003): CipherKey becomes a
 permission-free companion app instead of a keyboard. You keep Samsung
