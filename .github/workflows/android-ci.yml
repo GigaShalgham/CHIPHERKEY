@@ -36,11 +36,14 @@ jobs:
       # ubuntu-latest runners ship a pre-installed Android SDK with licenses
       # accepted. The android-actions/setup-android action is not used: its v3
       # release fails because it tries to install the removed 'tools' package.
-      # Install exactly what this project needs instead.
+      # sdkmanager is not on PATH by default; locate it via ANDROID_HOME.
+      # `|| true` on the licenses line guards the yes/SIGPIPE pipefail quirk.
       - name: Install Android SDK components
         run: |
-          yes | sdkmanager --licenses > /dev/null
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" > /dev/null
+          SDKMANAGER="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)"
+          echo "Using $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" > /dev/null
 
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
