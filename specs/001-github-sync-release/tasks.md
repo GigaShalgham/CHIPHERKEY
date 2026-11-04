@@ -69,8 +69,9 @@ principle V applies to release claims).
 
 ## Phase 7: Verification and finalization
 
-- [ ] T026 Secret-scan the final diff and full history
-      (`github_pat_`, `BEGIN.*PRIVATE KEY`, `.jks`, `.keystore`)
+- [x] T026 Secret-scan the final diff and full history
+      (GitHub PAT tokens, private-key blocks, keystores, keystore
+      properties) — clean
 - [ ] T027 Merge `001-github-sync-release` into `main`
 - [ ] T028 Update local `download/` deliverables (fresh APK copy,
       refreshed source archive, real README)

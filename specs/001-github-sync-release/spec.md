@@ -155,7 +155,7 @@ report.
 - **SC-003**: Release `v0.1.0` exists, marked as pre-release, with one
   APK asset whose SHA-256 matches the published checksum.
 - **SC-004**: A secret scan over the pushed tree and history finds no
-  credentials (`github_pat_`, private keys, keystores).
+  credentials (GitHub PAT tokens, private keys, keystores).
 
 ## Assumptions
 
