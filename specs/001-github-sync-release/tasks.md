@@ -33,9 +33,10 @@ principle V applies to release claims).
 - [x] T009 Store the PAT outside all repositories (mode 0600) and wire a
       credential-helper script; verify GitHub API access without exposing
       the value
-- [ ] T010 Add remote `origin` → `https://github.com/GigaShalgham/CHIPHERKEY.git`
-- [ ] T011 Push `main` (and the feature branch); no force-push
-- [ ] T012 Verify remote SHA via GitHub API equals local `git rev-parse`
+- [x] T010 Add remote `origin` → `https://github.com/GigaShalgham/CHIPHERKEY.git`
+- [x] T011 Push `main` (and the feature branch); no force-push
+- [x] T012 Verify remote SHA via GitHub API equals local `git rev-parse`
+      (95ee9d46da5757ec0d08af629df7a6c8ed8ee9d8, MATCH)
 
 ## Phase 4: User Story 2 — CI hardening (P1)
 
@@ -54,10 +55,12 @@ principle V applies to release claims).
       `apksigner verify --print-certs`; compute SHA-256
       (cert SHA-256 24870e1b6a9bca5b369ab09fc9401f8d31533b285d0788ec252d485a5a342cc4;
       APK SHA-256 7df7add9517cd5a7969566773c25e5a06266d149fb8043c59e83e33503f30184)
-- [ ] T019 Tag `v0.1.0` on the verified `main` commit
-- [ ] T020 Create the GitHub pre-release with honest notes and upload
+- [x] T019 Tag `v0.1.0` on the verified `main` commit
+- [x] T020 Create the GitHub pre-release with honest notes and upload
       the APK asset
-- [ ] T021 Re-fetch the asset and verify its digest matches
+      (https://github.com/GigaShalgham/CHIPHERKEY/releases/tag/v0.1.0)
+- [x] T021 Re-fetch the asset and verify its digest matches
+      (byte-identical SHA-256 after download)
 
 ## Phase 6: User Story 4 — community health files (P2)
 
@@ -72,7 +75,7 @@ principle V applies to release claims).
 - [x] T026 Secret-scan the final diff and full history
       (GitHub PAT tokens, private-key blocks, keystores, keystore
       properties) — clean
-- [ ] T027 Merge `001-github-sync-release` into `main`
+- [x] T027 Merge `001-github-sync-release` into `main`
 - [ ] T028 Update local `download/` deliverables (fresh APK copy,
       refreshed source archive, real README)
 - [ ] T029 Write the final session report (what changed, test evidence,
