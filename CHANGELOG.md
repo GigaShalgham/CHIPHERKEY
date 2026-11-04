@@ -5,6 +5,46 @@ All notable changes to CipherKey are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1-alpha] - 2026-11-04 (device-testing pre-release, tag `v0.2.1-alpha`)
+
+Samsung companion fixes (spec 004), from the maintainer's Galaxy A54 5G
+(One UI) report against v0.2.0-alpha. Same signing key as v0.2.0 —
+installs as an in-place update, no uninstall needed.
+
+### Fixed
+
+- **False "the clipboard is empty" on Android 10+** (spec 004 RC-1):
+  clipboard launches read the clipboard during `onCreate`, before the
+  window had focus — an unfocused window is denied clipboard access
+  since Android 10. Clipboard workflows now defer the read to
+  `onWindowFocusChanged(hasFocus=true)`, with an idempotence guard, a
+  transient "Reading the clipboard…" state, and a **Try again** button
+  on clipboard notices.
+- **Clipboard failure taxonomy** (spec 004 FR-2): genuinely empty,
+  non-text (e.g. an image), and OEM-blocked (`SecurityException`)
+  outcomes now produce distinct, honest notices instead of all
+  collapsing into "empty".
+- **`EXTRA_PROCESS_TEXT_READONLY` ignored on encrypt** (spec 004 RC-3):
+  read-only selections no longer offer "Replace in field", which the
+  calling app would have ignored.
+
+### Investigated, no code change
+
+- Selection-toolbar entries not visible on One UI (spec 004 RC-2): the
+  shipped manifest was verified correct (`aapt2 dump xmltree`); on
+  modern Android/One UI third-party `PROCESS_TEXT` handlers live in the
+  toolbar's ⋮ overflow, and some apps draw custom selection UIs that
+  never surface them. The clipboard ladder is the designed fallback;
+  see `specs/004-samsung-companion-fixes/DEVICE_TEST.md` for exactly
+  where to look.
+
+### Tests
+
+- 187 unique tests / 18 classes / 0 failures (+27 over v0.2.0's 160):
+  19 `ClipboardParser` tests (Persian, emoji, multiline LF/CRLF,
+  non-text mimes, blocked-vs-empty) and 8 companion workflow round-trip
+  tests over the real crypto stack.
+
 ## [0.2.0-alpha] - 2026-11-04 (device-testing pre-release, tag `v0.2.0-alpha`)
 
 Companion architecture (Option E, spec 003): CipherKey becomes a

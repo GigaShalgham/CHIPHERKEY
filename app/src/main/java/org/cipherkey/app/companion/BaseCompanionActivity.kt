@@ -9,15 +9,15 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
+import org.cipherkey.app.companion.CompanionUiState.Phase
 import org.cipherkey.app.ui.theme.CipherKeyTheme
 
 /**
  * Extra used by CipherKey's own Home screen to route a clipboard fallback
  * through the same processing activities (spec 003, User Story 3). When
  * present, the activity reads its text from the clipboard (explicit,
- * user-initiated launch = foreground access, via the ClipboardAccess
- * chokepoint) instead of the PROCESS_TEXT extra, and hides the
- * "Replace in field" affordance.
+ * user-initiated launch, via the ClipboardAccess chokepoint) instead of the
+ * PROCESS_TEXT extra, and hides the "Replace in field" affordance.
  */
 const val EXTRA_FROM_CLIPBOARD = "org.cipherkey.app.extra.FROM_CLIPBOARD"
 
@@ -27,15 +27,36 @@ const val EXTRA_FROM_CLIPBOARD = "org.cipherkey.app.extra.FROM_CLIPBOARD"
  * Hardening (FR-004): every input path funnels through
  * [ProcessTextContract] before any UI or crypto work happens; junk input
  * produces a graceful notice, never a crash.
+ *
+ * CLIPBOARD FOCUS CONTRACT (spec 004, Samsung device fix): on Android 10+
+ * the system only serves the clipboard to the app that owns the *focused*
+ * window — and a freshly created activity does not have focus yet while
+ * [onCreate] runs. Reading the clipboard there returned null and produced
+ * the false "clipboard is empty" notice on the Galaxy A54. Clipboard
+ * launches are therefore deferred until [onWindowFocusChanged] reports that
+ * this activity's window actually gained focus.
  */
 abstract class BaseCompanionActivity : ComponentActivity() {
 
     protected val viewModel: CompanionViewModel by viewModels()
 
+    /** True while a clipboard launch still awaits its first focused read. */
+    private var pendingClipboardDispatch = false
+
+    /** True once the deferred clipboard read has been performed. */
+    private var clipboardDispatched = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) {
-            dispatchIntent(intent)
+            if (isClipboardLaunch(intent)) {
+                // Do NOT read the clipboard here: the window has no focus
+                // during onCreate and Android 10+ denies the read. Defer to
+                // the first onWindowFocusChanged(true).
+                pendingClipboardDispatch = true
+            } else {
+                dispatchIntent(intent)
+            }
         }
         setContent {
             CipherKeyTheme {
@@ -49,6 +70,11 @@ abstract class BaseCompanionActivity : ComponentActivity() {
                     onCopy = viewModel::copyResult,
                     onInsert = ::finishWithResult,
                     onClose = { finish() },
+                    onRetryClipboard = if (isClipboardLaunch(intent)) {
+                        { retryClipboardDispatch() }
+                    } else {
+                        null
+                    },
                 )
             }
         }
@@ -58,8 +84,39 @@ abstract class BaseCompanionActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        dispatchIntent(intent)
+        if (!isClipboardLaunch(intent)) {
+            dispatchIntent(intent)
+        }
     }
+
+    /**
+     * The first moment the clipboard may legitimately be read on Android
+     * 10+: this activity's window now owns focus.
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus) return
+        val awaitingRead = pendingClipboardDispatch ||
+            // Robustness for the tiny window where a configuration change
+            // recreated the activity between launch and first focus.
+            (viewModel.state.value.phase == Phase.Idle && isClipboardLaunch(intent))
+        if (awaitingRead && !clipboardDispatched) {
+            clipboardDispatched = true
+            dispatchIntent(intent)
+        }
+    }
+
+    /** Explicit "Try again" from the notice card: the window is focused. */
+    private fun retryClipboardDispatch() {
+        if (hasWindowFocus()) {
+            clipboardDispatched = true
+            viewModel.retryClipboard()
+        }
+    }
+
+    /** True when this launch came from the Home-screen clipboard buttons. */
+    protected fun isClipboardLaunch(intent: Intent): Boolean =
+        intent.getBooleanExtra(EXTRA_FROM_CLIPBOARD, false)
 
     protected abstract fun dispatchIntent(intent: Intent)
 
@@ -76,7 +133,7 @@ abstract class BaseCompanionActivity : ComponentActivity() {
     }
 
     /** Graceful dead-end notice for unusable input (FR-004). */
-    protected fun showNotice(notice: String) {
-        viewModel.showNotice(notice)
+    protected fun showNotice(notice: String, retryable: Boolean = false) {
+        viewModel.showNotice(notice, retryable)
     }
 }

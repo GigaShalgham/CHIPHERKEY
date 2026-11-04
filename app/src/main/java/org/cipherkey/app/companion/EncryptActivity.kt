@@ -16,30 +16,33 @@ import org.cipherkey.app.companion.ProcessTextContract.SelectedText
 class EncryptActivity : BaseCompanionActivity() {
 
     override fun dispatchIntent(intent: Intent) {
-        val fromClipboard = intent.getBooleanExtra(EXTRA_FROM_CLIPBOARD, false)
-
-        val parsed = if (fromClipboard) {
-            // Clipboard fallback launched from CipherKey's Home screen:
-            // user-initiated, foreground — ClipboardAccess chokepoint.
-            viewModel.peekClipboard(CompanionMode.ENCRYPT)
-        } else {
-            ProcessTextContract.parsePlaintext(
-                intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT),
-            )
+        if (isClipboardLaunch(intent)) {
+            // Clipboard fallback launched from CipherKey's Home screen.
+            // Focus-deferred by the base class; the read happens through
+            // the ClipboardAccess chokepoint while this window has focus.
+            viewModel.beginFromClipboard(CompanionMode.ENCRYPT)
+            return
         }
 
-        when (parsed) {
+        // PROCESS_TEXT contract: when the selection lives in a read-only
+        // view the caller passes EXTRA_PROCESS_TEXT_READONLY=true and the
+        // result would be ignored — the sheet must not offer
+        // "Replace in field" (spec 004 fix).
+        val readOnly = intent.getBooleanExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, false)
+
+        when (
+            val parsed = ProcessTextContract.parsePlaintext(
+                intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT),
+            )
+        ) {
             is SelectedText.Valid ->
                 viewModel.beginEncrypt(
                     text = parsed.text,
-                    source = if (fromClipboard) TextSource.CLIPBOARD else TextSource.SELECTION,
+                    source = TextSource.SELECTION,
+                    readOnly = readOnly,
                 )
             SelectedText.Empty -> showNotice(
-                if (fromClipboard) {
-                    "The clipboard is empty — copy a draft first, then tap Encrypt clipboard."
-                } else {
-                    "No text was selected. Select the draft text and try again."
-                },
+                "No text was selected. Select the draft text and try again.",
             )
             is SelectedText.Oversized -> showNotice(
                 "The selected text is longer than ${parsed.limitBytes / 1024} KiB and cannot be encrypted as one message.",

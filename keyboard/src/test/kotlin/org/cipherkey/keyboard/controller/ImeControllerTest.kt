@@ -28,6 +28,7 @@ import org.cipherkey.data.repository.MessageCipher
 import org.cipherkey.data.repository.SessionKeyRepository
 import org.cipherkey.keyboard.input.TextFieldAccess
 import org.cipherkey.security.clipboard.ClipboardAccess
+import org.cipherkey.security.clipboard.ClipboardRead
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -101,6 +102,10 @@ private class FakeTextField(var text: String = "") : TextFieldAccess {
 /** Scriptable clipboard that counts reads (the security-relevant operation). */
 private class FakeClipboard(var current: String? = null) : ClipboardAccess {
     var readCount = 0
+    override fun read(): ClipboardRead {
+        readCount++
+        return current?.let { ClipboardRead.Text(it) } ?: ClipboardRead.Empty
+    }
     override fun currentText(): String? {
         readCount++
         return current

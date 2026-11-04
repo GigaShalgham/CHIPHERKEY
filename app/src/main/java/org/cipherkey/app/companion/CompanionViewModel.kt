@@ -18,6 +18,7 @@ import org.cipherkey.data.repository.EncryptOutcome
 import org.cipherkey.data.repository.MessageCipher
 import org.cipherkey.data.repository.UnlockOutcome
 import org.cipherkey.security.clipboard.ClipboardAccess
+import org.cipherkey.security.clipboard.ClipboardRead
 
 /**
  * Mode of the companion flow currently hosted by an activity.
@@ -58,6 +59,8 @@ data class CompanionUiState(
     val copied: Boolean = false,
     /** Human-readable notice for edge outcomes; null = none. */
     val notice: String? = null,
+    /** True when the notice offers a clipboard "Try again" (spec 004). */
+    val retryable: Boolean = false,
     val busy: Boolean = false,
 ) {
     enum class Phase { Idle, Prepare, NeedsUnlock, Result, Notice }
@@ -88,48 +91,20 @@ class CompanionViewModel @Inject constructor(
     /**
      * Encrypt flow: show prepare screen (sticky contact preselected,
      * passphrase only if the session is locked).
+     *
+     * [readOnly] is true when the selection came from a non-editable view
+     * (EXTRA_PROCESS_TEXT_READONLY): the sheet then hides "Replace in
+     * field" because the calling app would ignore the result.
      */
-    fun beginEncrypt(text: String, source: TextSource) {
+    fun beginEncrypt(text: String, source: TextSource, readOnly: Boolean = false) {
         if (!begun.compareAndSet(false, true)) return
-        viewModelScope.launch {
-            val contacts = contactsRepository.observeContacts().first()
-            val unlocked = contacts.map { it.id }
-                .filter { messageCipher.isUnlocked(it) }
-                .toSet()
-            // Sticky contact, clamped to an existing contact (FR-005).
-            val sticky = settings.lastContactId.first()
-            val selected = contacts.firstOrNull { it.id.value == sticky }?.id
-            _state.value = CompanionUiState(
-                mode = CompanionMode.ENCRYPT,
-                source = source,
-                phase = if (contacts.isEmpty()) {
-                    CompanionUiState.Phase.Notice
-                } else {
-                    CompanionUiState.Phase.Prepare
-                },
-                incoming = text,
-                contacts = contacts,
-                unlocked = unlocked,
-                selectedContactId = selected,
-                notice = if (contacts.isEmpty()) {
-                    "No contacts yet. Open CipherKey and create a contact with a shared passphrase first."
-                } else null,
-            )
-        }
+        startEncryptFlow(text, source, readOnly)
     }
 
     /** Decrypt flow: auto-resolve the contact from the envelope's keyId. */
     fun beginDecrypt(text: String, source: TextSource, readOnly: Boolean) {
         if (!begun.compareAndSet(false, true)) return
-        _state.value = CompanionUiState(
-            mode = CompanionMode.DECRYPT,
-            source = source,
-            phase = CompanionUiState.Phase.Prepare,
-            incoming = text,
-            readOnly = readOnly,
-            busy = true,
-        )
-        viewModelScope.launch { decryptInternal(text) }
+        startDecryptFlow(text, source, readOnly)
     }
 
     fun selectContact(id: ContactId) {
@@ -144,13 +119,14 @@ class CompanionViewModel @Inject constructor(
     }
 
     /** Dead-end notice for unusable input (activity-level hardening). */
-    fun showNotice(notice: String) {
+    fun showNotice(notice: String, retryable: Boolean = false) {
         if (!begun.compareAndSet(false, true)) return
         _state.value = CompanionUiState(
             mode = _state.value.mode,
             source = _state.value.source,
             phase = CompanionUiState.Phase.Notice,
             notice = notice,
+            retryable = retryable,
         )
     }
 
@@ -226,19 +202,122 @@ class CompanionViewModel @Inject constructor(
     }
 
     /**
-     * Clipboard entry point: returns the sanitized current clip for the
-     * given mode, or null. Called ONLY from an explicit user action
-     * (ClipboardAccess chokepoint contract).
+     * Clipboard entry point (spec 004): reads the current clip through the
+     * ClipboardAccess chokepoint and starts the flow for [mode].
+     *
+     * MUST be called only while the hosting activity's window has focus
+     * (Android 10+ clipboard focus contract — see BaseCompanionActivity).
+     * The distinct [ClipboardRead] outcomes map to distinct user-facing
+     * notices; only genuinely empty/blank clips claim emptiness.
      */
-    fun peekClipboard(mode: CompanionMode): ProcessTextContract.SelectedText {
-        val raw = clipboard.currentText()
-        return when (mode) {
-            CompanionMode.ENCRYPT -> ProcessTextContract.parsePlaintext(raw)
-            CompanionMode.DECRYPT -> ProcessTextContract.parseEnvelope(raw)
+    fun beginFromClipboard(mode: CompanionMode) {
+        if (!begun.compareAndSet(false, true)) return
+        when (val clip = clipboard.read()) {
+            is ClipboardRead.Text -> when (
+                val parsed = if (mode == CompanionMode.ENCRYPT) {
+                    ProcessTextContract.parsePlaintext(clip.text)
+                } else {
+                    ProcessTextContract.parseEnvelope(clip.text)
+                }
+            ) {
+                is ProcessTextContract.SelectedText.Valid ->
+                    if (mode == CompanionMode.ENCRYPT) {
+                        startEncryptFlow(parsed.text, TextSource.CLIPBOARD, readOnly = true)
+                    } else {
+                        startDecryptFlow(parsed.text, TextSource.CLIPBOARD, readOnly = true)
+                    }
+                ProcessTextContract.SelectedText.Empty -> clipboardNotice(
+                    "The clipboard text is empty (blank). Copy the text, then tap Try again.",
+                )
+                is ProcessTextContract.SelectedText.Oversized -> clipboardNotice(
+                    "The clipboard text is longer than ${parsed.limitBytes / 1024} KiB and cannot be processed as one message.",
+                    retryable = false,
+                )
+            }
+            ClipboardRead.Empty -> clipboardNotice(
+                "The clipboard is empty. Copy the text first, then tap Try again.",
+            )
+            is ClipboardRead.NonText -> clipboardNotice(
+                "The clipboard contains non-text content (${clip.mimeType ?: "unknown type"}). " +
+                    "CipherKey can only process text — copy text, then tap Try again.",
+            )
+            is ClipboardRead.Blocked -> clipboardNotice(
+                "Android blocked clipboard access" +
+                    (clip.reason?.let { " ($it)" } ?: "") +
+                    ". Tap Try again while CipherKey is in the foreground.",
+            )
         }
     }
 
+    /**
+     * "Try again" from a clipboard notice: resets the flow and re-reads.
+     * The retry affordance is only rendered for retryable notices, and only
+     * wired for clipboard launches.
+     */
+    fun retryClipboard() {
+        val current = _state.value
+        if (current.phase != CompanionUiState.Phase.Notice || !current.retryable) return
+        val mode = current.mode
+        begun.value = false
+        _state.value = CompanionUiState(mode = mode)
+        beginFromClipboard(mode)
+    }
+
     // ------------------------------------------------------------ internals
+
+    /** Unguarded encrypt flow (the public entry owns the begun flag). */
+    private fun startEncryptFlow(text: String, source: TextSource, readOnly: Boolean) {
+        viewModelScope.launch {
+            val contacts = contactsRepository.observeContacts().first()
+            val unlocked = contacts.map { it.id }
+                .filter { messageCipher.isUnlocked(it) }
+                .toSet()
+            // Sticky contact, clamped to an existing contact (FR-005).
+            val sticky = settings.lastContactId.first()
+            val selected = contacts.firstOrNull { it.id.value == sticky }?.id
+            _state.value = CompanionUiState(
+                mode = CompanionMode.ENCRYPT,
+                source = source,
+                readOnly = readOnly,
+                phase = if (contacts.isEmpty()) {
+                    CompanionUiState.Phase.Notice
+                } else {
+                    CompanionUiState.Phase.Prepare
+                },
+                incoming = text,
+                contacts = contacts,
+                unlocked = unlocked,
+                selectedContactId = selected,
+                notice = if (contacts.isEmpty()) {
+                    "No contacts yet. Open CipherKey and create a contact with a shared passphrase first."
+                } else null,
+            )
+        }
+    }
+
+    /** Unguarded decrypt flow (the public entry owns the begun flag). */
+    private fun startDecryptFlow(text: String, source: TextSource, readOnly: Boolean) {
+        _state.value = CompanionUiState(
+            mode = CompanionMode.DECRYPT,
+            source = source,
+            phase = CompanionUiState.Phase.Prepare,
+            incoming = text,
+            readOnly = readOnly,
+            busy = true,
+        )
+        viewModelScope.launch { decryptInternal(text) }
+    }
+
+    /** Clipboard-outcome notice without re-checking the begun flag. */
+    private fun clipboardNotice(message: String, retryable: Boolean = true) {
+        _state.value = CompanionUiState(
+            mode = _state.value.mode,
+            source = TextSource.CLIPBOARD,
+            phase = CompanionUiState.Phase.Notice,
+            notice = message,
+            retryable = retryable,
+        )
+    }
 
     private suspend fun decryptInternal(envelope: String) {
         _state.value = _state.value.copy(busy = true, notice = null)

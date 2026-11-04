@@ -56,6 +56,7 @@ fun CompanionSheet(
     onCopy: () -> Unit,
     onInsert: () -> Unit,
     onClose: () -> Unit,
+    onRetryClipboard: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier
@@ -71,7 +72,19 @@ fun CompanionSheet(
         }
 
         when (state.phase) {
-            CompanionUiState.Phase.Idle -> Unit
+            // Clipboard launches sit here for the brief moment between
+            // activity creation and the first onWindowFocusChanged(true) —
+            // the deferred read has not run yet (spec 004).
+            CompanionUiState.Phase.Idle -> if (onRetryClipboard != null) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CircularProgressIndicator()
+                    Text("Reading the clipboard…", fontSize = 14.sp)
+                }
+            } else Unit
 
             CompanionUiState.Phase.Prepare ->
                 if (state.mode == CompanionMode.ENCRYPT) {
@@ -95,7 +108,7 @@ fun CompanionSheet(
                 ResultCard(state, onCopy, onInsert, onClose)
 
             CompanionUiState.Phase.Notice ->
-                NoticeCard(state, onClose)
+                NoticeCard(state, onClose, onRetryClipboard)
         }
 
         state.notice?.let { notice ->
@@ -371,6 +384,7 @@ private fun ResultCard(
 private fun NoticeCard(
     state: CompanionUiState,
     onClose: () -> Unit,
+    onRetryClipboard: (() -> Unit)?,
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -380,6 +394,11 @@ private fun NoticeCard(
             text = state.notice ?: "Nothing to do.",
             fontSize = 15.sp,
         )
+        if (state.retryable && onRetryClipboard != null) {
+            Button(onClick = onRetryClipboard, modifier = Modifier.fillMaxWidth()) {
+                Text("Try again")
+            }
+        }
         Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
             Text("Close")
         }

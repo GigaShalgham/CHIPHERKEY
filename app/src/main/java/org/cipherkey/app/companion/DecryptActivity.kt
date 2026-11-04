@@ -15,35 +15,28 @@ import org.cipherkey.app.companion.ProcessTextContract.SelectedText
 class DecryptActivity : BaseCompanionActivity() {
 
     override fun dispatchIntent(intent: Intent) {
-        val fromClipboard = intent.getBooleanExtra(EXTRA_FROM_CLIPBOARD, false)
+        if (isClipboardLaunch(intent)) {
+            // Clipboard fallback launched from CipherKey's Home screen.
+            // Focus-deferred by the base class.
+            viewModel.beginFromClipboard(CompanionMode.DECRYPT)
+            return
+        }
 
-        val parsed = if (fromClipboard) {
-            viewModel.peekClipboard(CompanionMode.DECRYPT)
-        } else {
-            ProcessTextContract.parseEnvelope(
+        val readOnly = intent.getBooleanExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, false)
+
+        when (
+            val parsed = ProcessTextContract.parseEnvelope(
                 intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT),
             )
-        }
-
-        val readOnly = if (fromClipboard) {
-            true
-        } else {
-            intent.getBooleanExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, false)
-        }
-
-        when (parsed) {
+        ) {
             is SelectedText.Valid ->
                 viewModel.beginDecrypt(
                     text = parsed.text,
-                    source = if (fromClipboard) TextSource.CLIPBOARD else TextSource.SELECTION,
+                    source = TextSource.SELECTION,
                     readOnly = readOnly,
                 )
             SelectedText.Empty -> showNotice(
-                if (fromClipboard) {
-                    "The clipboard is empty — copy the whole \"CK1:…\" message first."
-                } else {
-                    "No text was selected. Select the whole \"CK1:…\" message and try again."
-                },
+                "No text was selected. Select the whole \"CK1:…\" message and try again.",
             )
             is SelectedText.Oversized -> showNotice(
                 "The selected text is longer than ${parsed.limitBytes / 1024} KiB and is not a valid CK1 envelope.",
