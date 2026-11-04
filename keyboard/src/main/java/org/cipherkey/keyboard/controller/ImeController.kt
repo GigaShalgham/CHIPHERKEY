@@ -15,6 +15,7 @@ import org.cipherkey.data.repository.DecryptOutcome
 import org.cipherkey.data.repository.EncryptOutcome
 import org.cipherkey.data.repository.MessageCipher
 import org.cipherkey.data.repository.UnlockOutcome
+import org.cipherkey.keyboard.input.DraftRead
 import org.cipherkey.keyboard.input.TextFieldAccess
 import org.cipherkey.security.clipboard.ClipboardAccess
 
@@ -110,32 +111,43 @@ class ImeController(
     /** "Encrypt draft" button: draft -> envelope -> replace the field content. */
     fun requestEncryptDraft() {
         val state = _uiState.value
-        if (state.sensitiveField || state.busy) return
+        // Deep-scan finding 26: re-check the field LIVE at action time in
+        // addition to the onStartInputView-derived state — defense in depth
+        // against an editor that changed characteristics without a restart.
+        if (state.sensitiveField || textField.isSensitiveField || state.busy) return
         val contactId = state.activeContactId
             ?: run { notify("No contact yet — add one in the CipherKey app"); return }
         scope.launch {
             setBusy(true)
             try {
-                when (val outcome = messageCipher.encryptDraft(contactId, textField.readDraft().orEmpty())) {
-                    is EncryptOutcome.Encrypted -> {
-                        when {
-                            textField.replaceAll(outcome.envelope) ->
-                                notify("Encrypted for ${state.activeContactName}")
-                            clipboard.setText(outcome.envelope) ->
-                                notify("Field not editable — envelope copied to clipboard")
-                            else ->
-                                notify("Could not replace the field text")
+                // Deep-scan finding 22: an unreadable draft is NOT an empty
+                // draft — distinct outcomes, distinct notices.
+                when (val draft = textField.readDraft()) {
+                    DraftRead.Unreadable -> notify("Could not read this field — copy the text and use the app's Encrypt clipboard")
+                    DraftRead.TooLong -> notify("The draft is longer than 16 KiB — split it before encrypting")
+                    is DraftRead.Draft -> when (
+                        val outcome = messageCipher.encryptDraft(contactId, draft.text)
+                    ) {
+                        is EncryptOutcome.Encrypted -> {
+                            when {
+                                textField.replaceAll(outcome.envelope) ->
+                                    notify("Encrypted for ${state.activeContactName}")
+                                clipboard.setText(outcome.envelope) ->
+                                    notify("Field not editable — envelope copied to clipboard")
+                                else ->
+                                    notify("Could not replace the field text")
+                            }
                         }
+                        EncryptOutcome.NeedsUnlock ->
+                            _passphrasePrompt.value = PassphrasePrompt(
+                                contactId = contactId,
+                                contactName = state.activeContactName ?: "?",
+                                reason = PromptReason.SEND,
+                            )
+                        EncryptOutcome.NoSession -> notify("No key for this contact — open the CipherKey app")
+                        EncryptOutcome.EmptyDraft -> notify("Nothing to encrypt — type a message first")
+                        is EncryptOutcome.Failed -> notify(describe(outcome.error))
                     }
-                    EncryptOutcome.NeedsUnlock ->
-                        _passphrasePrompt.value = PassphrasePrompt(
-                            contactId = contactId,
-                            contactName = state.activeContactName ?: "?",
-                            reason = PromptReason.SEND,
-                        )
-                    EncryptOutcome.NoSession -> notify("No key for this contact — open the CipherKey app")
-                    EncryptOutcome.EmptyDraft -> notify("Nothing to encrypt — type a message first")
-                    is EncryptOutcome.Failed -> notify(describe(outcome.error))
                 }
             } finally {
                 setBusy(false)
@@ -146,7 +158,7 @@ class ImeController(
     /** "Decrypt clipboard" button: explicit clipboard read only. */
     fun requestDecryptClipboard() {
         val state = _uiState.value
-        if (state.sensitiveField || state.busy) return
+        if (state.sensitiveField || textField.isSensitiveField || state.busy) return
         scope.launch {
             setBusy(true)
             try {
@@ -219,6 +231,11 @@ class ImeController(
 
     fun insertPreviewedText() {
         val current = _preview.value ?: return
+        if (textField.isSensitiveField) {
+            // Never insert decrypted plaintext into a credential field.
+            notify("This is a password field — insertion blocked")
+            return
+        }
         if (textField.commitText(current.plaintext)) {
             _preview.value = null
         } else {
@@ -235,6 +252,9 @@ class ImeController(
         scope.launch {
             messageCipher.lockContact(contactId)
             refreshUnlocked()
+            // Deep-scan finding 24: locking must also drop the decrypted
+            // preview — the key that produced it is gone.
+            _preview.value = null
             notify("Locked")
         }
     }

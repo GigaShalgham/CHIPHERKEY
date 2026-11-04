@@ -6,7 +6,7 @@
 |---|---|---|
 | Shared passphrases | User memory only | Never stored, never logged |
 | Derived session keys (AES-256) | Process memory | Wiped on lock/expiry; never persisted raw |
-| Keystore-wrapped verifier | Room DB | AES-GCM under a non-exportable AndroidKeyStore key |
+| Keystore-wrapped verifier (digest) | Room DB | SHA-256 of the key, AES-GCM under a non-exportable AndroidKeyStore key — never the key itself (v0.2.2+; full-key blobs from ≤ 0.2.1 are migrated on next unlock) |
 | Plaintext drafts / decrypted previews | Process memory; input fields of third-party apps | Best-effort; see "Residual risks" |
 | Contact names, key metadata (keyId, salt, params) | Room DB (local) | Not secret by design; exposed in envelopes anyway |
 
@@ -31,8 +31,9 @@
    Android's IME model; the app's onboarding tells users to keep exactly one
    active keyboard.
 5. **Offline attacker with a copied DB**: has salts and parameters (public)
-   and the Keystore-wrapped blob (device-bound, no offline oracle). Brute
-   force requires running Argon2id per guess (64 MiB / 3 passes default) —
+   and the Keystore-wrapped verifier (device-bound, no offline oracle; and
+   since v0.2.2 only a digest of the key, not the key). Brute force
+   requires running Argon2id per guess (64 MiB / 3 passes default) —
    the KDF is the entire defence here, hence the tunable profiles.
 6. **Malicious messaging platform modifying ciphertexts in transit**:
    AEAD authentication (whole header as AAD) makes any modification detectable
@@ -78,8 +79,13 @@
 4. **Plaintext in third-party fields.** After *Insert*, plaintext is in the
    target app's edit buffer — that app's security posture applies.
 5. **Clipboard exposure.** The system clipboard briefly holds ciphertext
-   (and any plaintext the user put there). CipherKey never *writes* plaintext
-   to the clipboard; the preview panel is in-memory only.
+   (and any plaintext the user put there themselves). The companion Copy
+   button is the one path that writes DECRYPTED plaintext to the clipboard
+   — an explicit user action; on Android 13+ the clip is marked
+   `EXTRA_IS_SENSITIVE` so the clipboard overlay hides the content. There is
+   no automatic clear after paste; users should copy only what they need.
+   Screens that display decrypted plaintext set `FLAG_SECURE` (no
+   screenshots / screen recording of the preview).
 6. **IME trust.** Users must not run a second keyboard simultaneously; any
    IME can log keystrokes. Communicated in onboarding.
 7. **On-device attacks (root, hooked framework)**: out of scope for any

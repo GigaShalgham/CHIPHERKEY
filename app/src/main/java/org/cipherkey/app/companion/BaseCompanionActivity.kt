@@ -3,6 +3,7 @@ package org.cipherkey.app.companion
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -40,6 +41,9 @@ abstract class BaseCompanionActivity : ComponentActivity() {
 
     protected val viewModel: CompanionViewModel by viewModels()
 
+    /** The workflow this entry point hosts — drives notice headers (finding 4). */
+    protected abstract val companionMode: CompanionMode
+
     /** True while a clipboard launch still awaits its first focused read. */
     private var pendingClipboardDispatch = false
 
@@ -48,6 +52,14 @@ abstract class BaseCompanionActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Deep-scan finding 3: these activities render decrypted plaintext,
+        // so screenshots and screen recording must capture nothing. (The
+        // manifest's noHistory + excludeFromRecents only protect the
+        // recents preview.)
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.FLAG_SECURE,
+        )
         if (savedInstanceState == null) {
             if (isClipboardLaunch(intent)) {
                 // Do NOT read the clipboard here: the window has no focus
@@ -77,15 +89,6 @@ abstract class BaseCompanionActivity : ComponentActivity() {
                     },
                 )
             }
-        }
-    }
-
-    /** Re-dispatch on NEW_INTENT (singleTop relaunch from the toolbar). */
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        if (!isClipboardLaunch(intent)) {
-            dispatchIntent(intent)
         }
     }
 
@@ -134,6 +137,6 @@ abstract class BaseCompanionActivity : ComponentActivity() {
 
     /** Graceful dead-end notice for unusable input (FR-004). */
     protected fun showNotice(notice: String, retryable: Boolean = false) {
-        viewModel.showNotice(notice, retryable)
+        viewModel.showNotice(companionMode, notice, retryable)
     }
 }

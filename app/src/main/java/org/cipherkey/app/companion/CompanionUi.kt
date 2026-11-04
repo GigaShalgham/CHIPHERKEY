@@ -111,12 +111,18 @@ fun CompanionSheet(
                 NoticeCard(state, onClose, onRetryClipboard)
         }
 
-        state.notice?.let { notice ->
-            Text(
-                text = notice,
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.error,
-            )
+        // Deep-scan finding 10: when the phase itself is Notice, the card
+        // above already renders the text — this inline error line is for
+        // notices that accompany a live phase (Prepare / NeedsUnlock /
+        // Result), e.g. "Wrong passphrase." under the unlock card.
+        if (state.phase != CompanionUiState.Phase.Notice) {
+            state.notice?.let { notice ->
+                Text(
+                    text = notice,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))

@@ -61,7 +61,15 @@ class AndroidKeystoreKeyProtector : KeyProtector {
             cipher.updateAAD(keyId)
             cipher.doFinal(sealed)
         } catch (e: Exception) {
-            throw KeyProtectionException("unwrap failed (authentication or keyId mismatch)", e)
+            // Deep-scan finding 2: an unwrap failure is a Keystore/blob
+            // infrastructure problem (e.g. the master key was invalidated by
+            // a system update), never a wrong-passphrase signal — the
+            // passphrase is not involved in this operation at all. Evict the
+            // cached SecretKey handle so the next attempt reloads (or
+            // recreates) it instead of reusing a possibly-invalidated handle
+            // forever.
+            cachedKey = null
+            throw KeyProtectionException("unwrap failed (Keystore error or keyId mismatch)", e)
         }
     }
 

@@ -21,6 +21,7 @@ import org.cipherkey.data.repository.SessionKeyRepository
 import org.cipherkey.data.repository.UnlockOutcome
 import org.cipherkey.core.messages.Ck1FormatException
 import org.cipherkey.core.messages.InviteCodec
+import org.cipherkey.security.clipboard.ClipboardAccess
 import org.cipherkey.security.policies.Argon2Profile
 
 @HiltViewModel
@@ -28,6 +29,7 @@ class ContactsViewModel @Inject constructor(
     private val contactsRepository: ContactRepository,
     private val sessionKeys: SessionKeyRepository,
     private val messageCipher: MessageCipher,
+    private val clipboard: ClipboardAccess,
 ) : ViewModel() {
 
     val contacts: kotlinx.coroutines.flow.StateFlow<List<Contact>> =
@@ -67,12 +69,17 @@ class ContactsViewModel @Inject constructor(
     /**
      * Creates a contact and either imports the peer's invite (CKS1 code) or
      * generates a fresh key era whose invite the user then shares.
+     *
+     * The outcome is delivered to [onResult] as (ok, message) so the ADD
+     * DIALOG can show failures itself (deep-scan finding 6: they used to be
+     * written only to the home-screen feedback column behind the dialog's
+     * scrim, invisible at the moment they happened).
      */
     fun createContact(
         displayName: String,
         inviteText: String?,
         profile: Argon2Profile,
-        onResult: (Boolean) -> Unit,
+        onResult: (ok: Boolean, message: String?) -> Unit,
     ) {
         viewModelScope.launch {
             try {
@@ -83,8 +90,9 @@ class ContactsViewModel @Inject constructor(
                         is EraImport.Imported, is EraImport.AlreadyPresent -> Unit
                         EraImport.KeyBelongsToOtherContact -> {
                             contactsRepository.deleteContact(contact.id)
-                            _feedback.value = "This invite key already belongs to another contact"
-                            onResult(false)
+                            val message = "This invite key already belongs to another contact"
+                            _feedback.value = message
+                            onResult(false, message)
                             return@launch
                         }
                     }
@@ -93,16 +101,24 @@ class ContactsViewModel @Inject constructor(
                 }
                 loadEras(contact.id, notify = false)
                 _feedback.value = "Contact created"
-                onResult(true)
+                onResult(true, null)
             } catch (e: Ck1FormatException) {
-                _feedback.value = "Invalid invite code: ${e.message}"
-                onResult(false)
+                val message = "Invalid invite code: ${e.message}"
+                _feedback.value = message
+                onResult(false, message)
             } catch (e: IllegalArgumentException) {
-                _feedback.value = e.message ?: "Invalid contact"
-                onResult(false)
+                val message = e.message ?: "Invalid contact"
+                _feedback.value = message
+                onResult(false, message)
             }
         }
     }
+
+    /**
+     * Copies text (e.g. an invite code) through the ClipboardAccess
+     * chokepoint (deep-scan finding 14) and reports whether it worked.
+     */
+    fun copyText(text: String): Boolean = clipboard.setText(text)
 
     fun unlockContact(contactId: ContactId, passphrase: CharArray, onResult: (UnlockOutcome) -> Unit) {
         viewModelScope.launch {
@@ -135,6 +151,9 @@ class ContactsViewModel @Inject constructor(
             messageCipher.lockContact(contactId)
             contactsRepository.deleteContact(contactId)
             _eras.update { it - contactId }
+            // Deep-scan finding 15: the fingerprint cache belonged to the
+            // unlocked session that no longer exists.
+            _fingerprints.update { it - contactId }
             _feedback.value = "Contact deleted"
         }
     }

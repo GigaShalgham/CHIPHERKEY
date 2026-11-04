@@ -57,10 +57,15 @@ class KeySessionManager(
      * Activates (or replaces) the unlocked session for a contact. The
      * previous session's key material, if any, is wiped first.
      *
-     * The keyId and salt buffers are COPIED: a SessionKey owns its buffers so
-     * that wiping on lock/expiry can never mutate storage-layer objects that
-     * may still be aliased by the caller (defensive against DAOs or
-     * repositories that hand out shared byte arrays).
+     * The keyId, salt AND keyBytes buffers are COPIED: a SessionKey owns its
+     * buffers so that wiping on lock/expiry can never mutate storage-layer
+     * objects that may still be aliased by the caller (defensive against
+     * DAOs or repositories that hand out shared byte arrays, and against the
+     * repository zeroing the same array it is about to persist — deep-scan
+     * finding 1: a concurrent lock() between activate() and the wrapped-
+     * verifier persistence used to zero the key mid-wrap and could persist
+     * an all-zeros verifier that permanently rejected the correct
+     * passphrase).
      */
     suspend fun activate(
         contactId: ContactId,
@@ -80,7 +85,7 @@ class KeySessionManager(
             keyId = keyId.copyOf(),
             salt = salt.copyOf(),
             params = params,
-            keyBytes = keyBytes,
+            keyBytes = keyBytes.copyOf(),
         )
         active[contactId] = Entry(sessionKey, timeSource.nowMillis() + timeoutMillis)
         sessionKey
@@ -118,26 +123,39 @@ class KeySessionManager(
 
     /** Snapshot of contacts with a live (non-expired) session. */
     suspend fun unlockedContactIds(): Set<ContactId> = mutex.withLock {
-        sweepExpired()
+        sweepExpiredLocked()
         active.keys.toSet()
     }
 
     /** Absolute expiry timestamp of the contact's session, or null. */
     suspend fun expiryOf(contactId: ContactId): Long? = mutex.withLock {
-        sweepExpired()
+        sweepExpiredLocked()
         active[contactId]?.expiresAtMillis
     }
+
+    /**
+     * Wipes every expired session immediately instead of waiting for the
+     * next per-contact query, and returns how many were swept.
+     *
+     * Expiry is otherwise lazy (deep-scan finding 8): an expired-but-never-
+     * queried key would stay wiped-in-waiting in memory until process death.
+     * The app starts a low-frequency sweeper calling this (see
+     * CipherKeyApplication), bounding the residual window to roughly one
+     * sweep interval.
+     */
+    suspend fun sweepExpired(): Int = mutex.withLock { sweepExpiredLocked() }
 
     private fun wipe(sessionKey: SessionKey) {
         Arrays.fill(sessionKey.keyBytes, 0.toByte())
         sessionKey.keyId.fill(0) // public identifier, wiped for symmetry
     }
 
-    private fun sweepExpired() {
+    private fun sweepExpiredLocked(): Int {
         val now = timeSource.nowMillis()
         val expired = active.filterValues { it.expiresAtMillis <= now }.keys
         expired.forEach { id ->
             active.remove(id)?.let { wipe(it.sessionKey) }
         }
+        return expired.size
     }
 }

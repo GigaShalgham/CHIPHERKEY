@@ -3,39 +3,46 @@
 [![CI](https://github.com/GigaShalgham/CHIPHERKEY/actions/workflows/android-ci.yml/badge.svg)](https://github.com/GigaShalgham/CHIPHERKEY/actions/workflows/android-ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-**A local-first encryption layer that lives inside your Android keyboard.**
+**A local-first, permission-free encryption companion for any Android
+messenger.**
 
 CipherKey adds end-to-end message encryption to the messaging apps you already
-use — SMS, Telegram, WhatsApp, anything with a text field — without any
-server, account, or network access. It works by acting as a standard input
-method (IME): you type normally, tap **Encrypt**, and your draft is replaced
-with a `CK1:...` ciphertext you send as an ordinary message. On the receiving
-side, copy the ciphertext, tap **Decrypt**, read the plaintext preview, and
-insert it.
+use — SMS, Telegram, WhatsApp, anything that supports standard text selection
+or sharing — without any server, account, or network access. Since v0.2 the
+shipped app is a **companion**, not a keyboard: you keep the keyboard you
+already use, select the text you want to protect, and tap **Encrypt
+(CipherKey)** in the selection toolbar. The draft is replaced with a
+`CK1:...` ciphertext you send as an ordinary message. On the receiving side,
+select the message (or share it to CipherKey), tap **Decrypt (CipherKey)**,
+read the plaintext preview, copy or insert it.
 
 ```
-Send:    type → select contact → Encrypt → ciphertext replaces the draft → send
-Receive: copy CK1:... → tap Decrypt → passphrase → preview → Insert
+Send:    type with any keyboard → select the draft → “Encrypt (CipherKey)” → ciphertext replaces it → send
+Receive: select/share the CK1:... message → “Decrypt (CipherKey)” → passphrase → preview → Copy
 ```
+
+When an app's selection toolbar is unavailable, the Home screen offers an
+**Encrypt clipboard / Decrypt clipboard** fallback ladder.
 
 ## Status
 
 | Capability | Status |
 |---|---|
 | Build (debug APK) | ✅ builds from source (`./gradlew assembleDebug`) |
-| IME integration (Compose UI, QWERTY + symbols) | ✅ implemented, unit-tested (logic) |
-| Mode A crypto: Argon2id + AES-256-GCM | ✅ implemented, 140 unique unit tests, RFC 9106 vector verified |
+| Companion workflows (selection toolbar, sharesheet, clipboard fallback) | ✅ implemented, unit-tested (logic) |
+| Mode A crypto: Argon2id + AES-256-GCM | ✅ implemented, 197 unique unit tests, RFC 9106 vector verified |
 | CK1 wire protocol + CKS1 invites | ✅ implemented, golden vector pinned |
 | Contact / key-era management (Room) | ✅ implemented |
-| Android Keystore key wrapping | ✅ implemented (needs on-device verification) |
-| Session manager (timeout, isolation, wipe) | ✅ implemented, unit-tested |
-| On-device smoke test (real phone) | ⚠️ not performed in this environment (no emulator/device) |
+| Android Keystore key wrapping (verifier is a digest, never the raw key) | ✅ implemented (needs on-device verification) |
+| Session manager (timeout, isolation, wipe, periodic sweep) | ✅ implemented, unit-tested |
+| On-device smoke test (real phone) | ⚠️ maintainer device gate in progress (see `specs/004…/DEVICE_TEST.md`) |
 | Mode B: public-key (Signal et al.) | ❌ interface only — evaluated and deferred, see docs/PLUGINS.md |
-| Old-key-era message decryption | ❌ v0.1 limitation (documented) |
-| Non-Latin keyboard layouts | ❌ v0.1 ships en-QWERTY only |
+| Old-key-era message decryption | ❌ v0.2 limitation (documented) |
+| Built-in keyboard (IME) | ❌ removed from the APK in v0.2 — the `:keyboard` module stays in-repo, compiled and tested as a dormant library |
 
-See `ENGINEERING_REPORT.md` for the full engineering status, test inventory
-and known limitations.
+See `ENGINEERING_REPORT.md` (v0.1 history), `docs/DEEP-SCAN-2026-11-05.md`
+(the full audit) and `CHANGELOG.md` for engineering status and known
+limitations.
 
 ## Building
 
@@ -44,7 +51,7 @@ platform 36 and build-tools 36.0.0 (or let Gradle's SDK tooling handle it).
 
 ```bash
 ./gradlew assembleDebug          # debug APK  -> app/build/outputs/apk/debug/
-./gradlew test                   # full unit-test suite (140 unique tests)
+./gradlew test                   # full unit-test suite (197 unique tests / 19 classes)
 ```
 
 The application requests **no Android system permissions** and contains **no
@@ -63,12 +70,15 @@ yourself: `aapt2 dump permissions app/build/outputs/apk/debug/app-debug.apk`.
 2. **Unlock per session.** The passphrase is never stored. Deriving the
    AES-256 key takes ~hundreds of milliseconds (Argon2id, 64 MiB / 3 passes
    by default). Keys live in memory only and are wiped on lock, timeout or
-   field switch. After the first successful unlock on a device, a
-   Keystore-wrapped verifier lets future wrong passphrases be rejected at
-   unlock time.
-3. **Encrypt/decrypt in any app.** The keyboard's toolbar offers
-   *Encrypt draft* and *Decrypt clipboard*. Password fields are detected and
-   the crypto UI is disabled there.
+   replacement (plus a periodic sweep of expired sessions). After the first
+   successful unlock on a device, a Keystore-wrapped **digest** verifier lets
+   future wrong passphrases be rejected at unlock time — the raw key is never
+   persisted, even wrapped.
+3. **Encrypt/decrypt in any app.** The selection toolbar and the sharesheet
+   carry text in and out; the clipboard fallback covers the rest. Screens
+   that display decrypted plaintext set `FLAG_SECURE` (no screenshots or
+   screen recording), and copied plaintext is marked sensitive on
+   Android 13+.
 
 ## Security properties
 
@@ -77,7 +87,8 @@ yourself: `aapt2 dump permissions app/build/outputs/apk/debug/app-debug.apk`.
 - Argon2id (RFC 9106) via BouncyCastle's lightweight API; no JCA provider is
   inserted.
 - Derived keys are never persisted raw; at rest only a Keystore-wrapped,
-  device-bound blob exists.
+  device-bound **digest** of the key exists (full-key verifiers from ≤ 0.2.1
+  are migrated transparently on next unlock).
 - Strict, canonical wire format; unknown versions/algorithms/modes are
   rejected before any cryptographic work.
 - `allowBackup=false`; no `INTERNET` permission; zero-permission manifest.
@@ -87,18 +98,20 @@ Limitations and the honest threat model are in `docs/THREAT_MODEL.md`.
 ## Repository layout
 
 ```
-app/            management UI (onboarding, contacts, settings)
-keyboard/       the IME itself (Compose UI + controller; NO crypto code)
+app/            companion UI: home, contacts, settings + PROCESS_TEXT/SEND activities
+keyboard/       the IME — dormant library since v0.2 (NOT in the APK; no crypto code)
 core/           pure-Kotlin domain: crypto, messages, keys, sessions
 data/           Room database, repositories (MessageCipher facade), settings
 security/       Keystore protector, clipboard chokepoint, parameter policies
-plugins/        public-key protocol plugin API + registry (empty in v0.1)
-docs/           PROTOCOL, ARCHITECTURE, THREAT_MODEL, PLUGINS
+plugins/        public-key protocol plugin API + registry (empty in v0.2)
+docs/           PROTOCOL, ARCHITECTURE, THREAT_MODEL, PLUGINS, DEEP-SCAN audits
+specs/          GitHub Spec Kit feature specifications
 ```
 
-The keyboard module contains **no cryptographic implementation**; it consumes
-the `MessageCipher` facade from `:data:repository`. Module dependency
-directions are acyclic and documented in `docs/ARCHITECTURE.md`.
+The `:keyboard` module contains **no cryptographic implementation**; when it
+ships it would consume the `MessageCipher` facade from `:data:repository`.
+Module dependency directions are acyclic and documented in
+`docs/ARCHITECTURE.md`.
 
 ## Releases
 
@@ -108,8 +121,8 @@ Every release page states the build type, the signing certificate SHA-256
 fingerprint, and the APK's SHA-256 checksum — verify before installing:
 
 ```bash
-sha256sum CipherKey-v0.1.0-alpha-release.apk
-apksigner verify --print-certs CipherKey-v0.1.0-alpha-release.apk
+sha256sum CipherKey-v0.2.1-alpha-release.apk
+apksigner verify --print-certs CipherKey-v0.2.1-alpha-release.apk
 ```
 
 CI artifacts (`cipherkey-debug-apk`) are unsigned debug builds for

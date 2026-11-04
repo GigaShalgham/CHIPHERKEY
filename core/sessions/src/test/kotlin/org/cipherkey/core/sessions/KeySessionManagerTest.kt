@@ -80,6 +80,44 @@ class KeySessionManagerTest {
     }
 
     @Test
+    fun `activate copies keyBytes from the caller`() = runTest {
+        val manager = manager()
+        val derived = manager.deriveKey("passphrase".toCharArray(), salt(1), fastParams)
+        val sessionKey = manager.activate(
+            contactId = contactA,
+            sessionId = SessionId("session-copy"),
+            keyId = ByteArray(16) { 1 },
+            salt = salt(1),
+            params = fastParams,
+            keyBytes = derived,
+            timeoutMillis = 60_000,
+        )
+        // Deep-scan finding 1: zeroing the caller's buffer (as the
+        // repository does around verifier persistence) must not corrupt
+        // the live session — previously the array was stored by reference.
+        derived.fill(0)
+        assertTrue(sessionKey.keyBytes.any { it != 0.toByte() })
+        assertEquals(sessionKey.sessionId, manager.activeSession(contactA)?.sessionId)
+    }
+
+    @Test
+    fun `sweepExpired wipes expired sessions without a query`() = runTest {
+        val manager = manager()
+        val a = unlock(manager, contactA, "pass", 1)
+        val b = unlock(manager, contactB, "pass", 2)
+        time.now += 61_000
+        // Deep-scan finding 8: expiry is lazy — the sweeper is what bounds
+        // how long an expired, unqueried key stays in memory.
+        assertEquals(2, manager.sweepExpired())
+        assertTrue(a.keyBytes.all { it == 0.toByte() })
+        assertTrue(b.keyBytes.all { it == 0.toByte() })
+        assertNull(manager.activeSession(contactA))
+        assertNull(manager.activeSession(contactB))
+        // Idempotent: nothing left to sweep.
+        assertEquals(0, manager.sweepExpired())
+    }
+
+    @Test
     fun `sessions of different contacts are isolated`() = runTest {
         val manager = manager()
         val keyA = unlock(manager, contactA, "shared-pass", 1)

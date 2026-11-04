@@ -30,10 +30,13 @@ interface SessionKeyDao {
     @Upsert
     suspend fun upsert(session: SessionKeyEntity)
 
-    @Query("SELECT * FROM session_keys WHERE contactId = :contactId ORDER BY createdAt DESC")
+    // Deterministic ordering (deep-scan finding 16): same-millisecond
+    // eras are broken by sessionId, so "latest era" never depends on
+    // SQLite's scan order.
+    @Query("SELECT * FROM session_keys WHERE contactId = :contactId ORDER BY createdAt DESC, sessionId DESC")
     fun observeByContact(contactId: String): Flow<List<SessionKeyEntity>>
 
-    @Query("SELECT * FROM session_keys WHERE contactId = :contactId ORDER BY createdAt DESC LIMIT 1")
+    @Query("SELECT * FROM session_keys WHERE contactId = :contactId ORDER BY createdAt DESC, sessionId DESC LIMIT 1")
     suspend fun latestByContact(contactId: String): SessionKeyEntity?
 
     @Query("SELECT * FROM session_keys WHERE keyId = :keyId LIMIT 1")

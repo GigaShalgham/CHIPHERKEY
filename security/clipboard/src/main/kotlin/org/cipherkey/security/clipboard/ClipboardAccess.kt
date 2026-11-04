@@ -117,6 +117,16 @@ interface ClipboardAccess {
      * (copying an envelope or a decrypted result). Never called implicitly.
      */
     fun setText(text: String): Boolean
+
+    /**
+     * Overwrites the primary clip with SENSITIVE text (decrypted
+     * plaintext). Implementations mark the clip so Android 13+ hides its
+     * content preview (deep-scan finding 17); older platforms degrade to a
+     * plain copy. Same explicit-user-action contract as [setText].
+     *
+     * Defaults to [setText] so JVM fakes need no changes.
+     */
+    fun setSensitiveText(text: String): Boolean = setText(text)
 }
 
 @Singleton
@@ -157,10 +167,23 @@ class AndroidClipboardAccess @Inject constructor(
     override fun currentText(): String? =
         (read() as? ClipboardRead.Text)?.text
 
-    override fun setText(text: String): Boolean {
+    override fun setText(text: String): Boolean = setClip(text, sensitive = false)
+
+    override fun setSensitiveText(text: String): Boolean = setClip(text, sensitive = true)
+
+    private fun setClip(text: String, sensitive: Boolean): Boolean {
         val manager = manager() ?: return false
         return runCatching {
-            manager.setPrimaryClip(android.content.ClipData.newPlainText("CipherKey", text))
+            val clip = android.content.ClipData.newPlainText("CipherKey", text)
+            if (sensitive) {
+                // Android 13+ honours EXTRA_IS_SENSITIVE: the clipboard
+                // overlay shows only "Sensitive content copied" instead of
+                // the plaintext. Harmless on older versions (unknown extra).
+                clip.description.extras = android.os.PersistableBundle().apply {
+                    putBoolean(android.content.ClipDescription.EXTRA_IS_SENSITIVE, true)
+                }
+            }
+            manager.setPrimaryClip(clip)
             true
         }.getOrDefault(false)
     }

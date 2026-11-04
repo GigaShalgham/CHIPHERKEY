@@ -3,9 +3,12 @@ package org.cipherkey.data.repository
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.cipherkey.core.crypto.CryptoError
+import org.cipherkey.core.keys.KeyProtectionException
+import org.cipherkey.core.keys.KeyProtector
 import org.cipherkey.core.messages.Ck1
 import org.cipherkey.core.messages.InviteCodec
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -61,6 +64,71 @@ class MessageCipherTest {
         // Second unlock with the wrong passphrase must fail verification.
         val outcome = device.cipher.unlockContact(contact.id, "wrong passphrase here".toCharArray())
         assertTrue(outcome is UnlockOutcome.WrongPassphrase)
+        assertNull(device.cipher.activeSessionFingerprint(contact.id))
+    }
+
+    @Test
+    fun `stored verifier is a digest, never the raw session key`() = runTest {
+        val device = TestDevice()
+        val (contact, era) = device.newContact("Bob")
+        assertTrue(device.cipher.unlockContact(contact.id, passphrase.toCharArray()) is UnlockOutcome.Unlocked)
+
+        val wrapped = device.sessionKeys.wrappedKeyOf(era.sessionId)
+        assertNotNull(wrapped)
+        val stored = device.protector.unwrap(wrapped!!, era.keyId)
+
+        // v2 format: 0x02 || SHA-256(key) — 33 bytes, not the 32-byte key.
+        assertEquals(33, stored.size)
+        assertEquals(0x02, stored[0].toInt())
+        val rawKey = device.sessions.deriveKey(passphrase.toCharArray(), era.salt, era.params)
+        assertFalse(stored.contentEquals(rawKey))
+        val expectedDigest = java.security.MessageDigest.getInstance("SHA-256").digest(rawKey)
+        assertTrue(expectedDigest.contentEquals(stored.copyOfRange(1, stored.size)))
+    }
+
+    @Test
+    fun `legacy full-key verifier still unlocks and migrates to the digest form`() = runTest {
+        val device = TestDevice()
+        val (contact, era) = device.newContact("Bob")
+        // Simulate a database written by <= 0.2.1: the wrapped blob
+        // decrypts to the FULL 32-byte session key.
+        val rawKey = device.sessions.deriveKey(passphrase.toCharArray(), era.salt, era.params)
+        device.sessionKeys.storeWrappedKey(era.sessionId, device.protector.wrap(rawKey, era.keyId))
+        device.cipher.lockContact(contact.id)
+
+        val outcome = device.cipher.unlockContact(contact.id, passphrase.toCharArray())
+        assertTrue(outcome is UnlockOutcome.Unlocked)
+
+        // Transparently migrated to the v2 digest form.
+        val migrated = device.protector.unwrap(
+            device.sessionKeys.wrappedKeyOf(era.sessionId)!!,
+            era.keyId,
+        )
+        assertEquals(33, migrated.size)
+        assertEquals(0x02, migrated[0].toInt())
+
+        // And the migrated verifier still rejects a wrong passphrase.
+        device.cipher.lockContact(contact.id)
+        assertTrue(
+            device.cipher.unlockContact(contact.id, "wrong passphrase here".toCharArray())
+                is UnlockOutcome.WrongPassphrase,
+        )
+    }
+
+    @Test
+    fun `keystore infrastructure failure is failed, not wrong passphrase`() = runTest {
+        // Emulates a Keystore master key invalidated by a system update:
+        // wrap works, unwrap always fails (deep-scan finding 2).
+        val device = TestDevice(protector = FailingKeystoreProtector)
+        val (contact, era) = device.newContact("Bob")
+        val rawKey = device.sessions.deriveKey(passphrase.toCharArray(), era.salt, era.params)
+        device.sessionKeys.storeWrappedKey(era.sessionId, device.protector.wrap(rawKey, era.keyId))
+
+        val outcome = device.cipher.unlockContact(contact.id, passphrase.toCharArray())
+        // The passphrase is CORRECT — an infrastructure failure must not
+        // tell the user to retype it.
+        assertTrue(outcome is UnlockOutcome.Failed)
+        assertTrue((outcome as UnlockOutcome.Failed).reason.contains("Keystore error"))
         assertNull(device.cipher.activeSessionFingerprint(contact.id))
     }
 
@@ -294,5 +362,12 @@ class MessageCipherTest {
         val payload = java.util.Base64.getUrlDecoder().decode(body)
         payload[byteIndex] = (payload[byteIndex].toInt() xor 0x01).toByte()
         return Ck1.MAGIC + Ck1.encodeBase64Url(payload)
+    }
+
+    /** Wrap is the identity; unwrap always throws — a dead Keystore. */
+    private object FailingKeystoreProtector : KeyProtector {
+        override fun wrap(plainKey: ByteArray, keyId: ByteArray): ByteArray = plainKey.copyOf()
+        override fun unwrap(wrapped: ByteArray, keyId: ByteArray): ByteArray =
+            throw KeyProtectionException("master key invalidated")
     }
 }

@@ -14,6 +14,8 @@ import org.cipherkey.app.companion.ProcessTextContract.SelectedText
 @AndroidEntryPoint
 class DecryptActivity : BaseCompanionActivity() {
 
+    override val companionMode: CompanionMode = CompanionMode.DECRYPT
+
     override fun dispatchIntent(intent: Intent) {
         if (isClipboardLaunch(intent)) {
             // Clipboard fallback launched from CipherKey's Home screen.

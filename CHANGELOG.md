@@ -5,6 +5,104 @@ All notable changes to CipherKey are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — remediation of the 2026-11-05 deep-scan findings
+
+Every code finding from `docs/DEEP-SCAN-2026-11-05.md` is addressed below
+(numbering follows that document). Machine-verified after the fixes:
+197 unique tests / 19 classes / 0 failures (+10 regression tests) and a
+clean `assembleDebug`.
+
+### Fixed — shipped code (MEDIUM findings)
+
+- **Unlock-verifier race (finding 1)**: `KeySessionManager.activate()` now
+  copies `keyBytes` (it already copied `keyId`/`salt`). A concurrent
+  `lock()`/`lockAll()` between activation and verifier persistence can no
+  longer zero the buffer mid-wrap and permanently poison the era's verifier.
+- **Keystore failures misreported as "Wrong passphrase" (finding 2)**: a
+  `KeyProtectionException` during unwrap (e.g. master key invalidated by a
+  system update) is now surfaced as `UnlockOutcome.Failed` with a
+  "Keystore error" reason; the cached Keystore key handle is evicted so the
+  next attempt reloads it. Wrong-passphrase detection is unchanged (it comes
+  from the verifier comparison, not from the unwrap).
+- **No `FLAG_SECURE` on plaintext screens (finding 3)**: all companion
+  activities (the only screens that render decrypted plaintext) now set
+  `FLAG_SECURE` — screenshots and screen recording capture nothing.
+- **Decrypt failures headed "Encrypt" (finding 4)**: each entry activity
+  declares its mode and passes it into notices; the clipboard flow sets its
+  mode before the first read. An empty/oversized **decrypt** invocation is
+  now correctly titled "Decrypt".
+- **Stored verifier was the full session key (finding 5)**: the at-rest
+  verifier is now a Keystore-wrapped **digest** (`0x02 || SHA-256(key)`).
+  Wrong-passphrase rejection is identical, but a DB + Keystore compromise no
+  longer yields the raw key. Legacy full-key blobs from ≤ 0.2.1 are still
+  accepted and transparently migrated on the next successful unlock.
+
+### Fixed — shipped code (LOW/INFO findings)
+
+- Contact-creation failures now render inside the add-dialog, not only
+  behind its scrim (finding 6).
+- Settings copy no longer references the removed keyboard toolbar; the About
+  card shows the real `BuildConfig.VERSION_NAME` instead of a stale "0.1.0"
+  (finding 7).
+- Expired sessions are swept by a low-frequency background sweeper, so an
+  expired-but-unqueried key no longer sits in memory until process death
+  (finding 8).
+- Key fingerprints format with `Locale.ROOT` — Persian-locale devices no
+  longer render "۰۷۲"-style digits that break out-of-band comparison
+  (finding 9).
+- Companion notices no longer render twice (card + inline error line,
+  finding 10).
+- Removed the dead `onNewIntent` "singleTop relaunch" path no manifest
+  activity declares (finding 11).
+- All companion flows run through a never-crash launcher: unexpected
+  exceptions surface as notices with `busy` cleared, and the passphrase
+  `CharArray` is wiped on every path including exceptions (finding 12).
+- The timeout slider writes to DataStore only when the drag finishes, not
+  on every animation frame (finding 13).
+- "Copy invite" goes through the `ClipboardAccess` chokepoint and reports
+  success/failure inline (finding 14).
+- `deleteContact` clears the fingerprint cache along with the era cache
+  (finding 15).
+- Same-millisecond key eras resolve deterministically (`ORDER BY createdAt
+  DESC, sessionId DESC`); `importEra` loses its check-then-act window on the
+  unique `keyId` index by re-classifying after a constraint failure
+  (finding 16).
+- Copied decrypted plaintext is marked `EXTRA_IS_SENSITIVE` on Android 13+
+  so the clipboard overlay hides it (finding 17).
+
+### Fixed — dormant `:keyboard` library (compiled + tested, not shipped)
+
+- `replaceAll` is now atomic (`beginBatchEdit`/`endBatchEdit`) with a
+  best-effort restore of the deleted draft if the insert fails, and replaces
+  an active selection directly instead of leaving it in place (findings 21/22).
+- `readDraft` includes the active selection and returns an honest
+  `DraftRead` result: `Unreadable` and `TooLong` are no longer conflated
+  with an empty draft (finding 22).
+- Draft reads are capped at the 16 KiB protocol limit (+1 to detect
+  overflow) instead of hauling up to 100,000 chars per side over Binder on
+  the main dispatcher (finding 23).
+- Locking the active contact also clears the decrypted preview
+  (finding 24).
+- The `isSensitiveField` live re-check is now consulted at action time
+  (encrypt, decrypt-clipboard, insert) as defense in depth (finding 26).
+
+### Documentation
+
+- README rewritten for the shipped v0.2 companion architecture and the
+  197-test reality (it still described the v0.1 IME and 140 tests).
+- THREAT_MODEL / ARCHITECTURE aligned with the digest verifier, the
+  clipboard-copy behavior, and the actual wipe triggers.
+
+### Not addressed (documented decisions)
+
+- Finding 25 (`KeyboardLifecycleOwner` dispatches only CREATE/DESTROY):
+  safe today and only reachable if the IME ships again; left as documented
+  limitation.
+- Finding 27 (GitHub PAT) — re-provisioned by the maintainer after the scan.
+- Finding 28 (release signing keystore lost): the next *signed* release
+  still needs a new keystore and a disclosed key change; no signing identity
+  is recoverable on this machine.
+
 ## [0.2.1-alpha] - 2026-11-04 (device-testing pre-release, tag `v0.2.1-alpha`)
 
 Samsung companion fixes (spec 004), from the maintainer's Galaxy A54 5G

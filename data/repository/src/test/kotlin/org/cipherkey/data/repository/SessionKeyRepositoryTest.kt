@@ -111,4 +111,25 @@ class SessionKeyRepositoryTest {
         val eras = device.sessionKeys.erasForContact(contact.id)
         assertEquals(listOf(era2.sessionId, era1.sessionId), eras.map { it.sessionId })
     }
+
+    @Test
+    fun `same-millisecond eras resolve deterministically`() = runTest {
+        val device = TestDevice()
+        val (contact, era1) = device.newContact("Bob")
+        // NO clock advance: both eras share a createdAt timestamp, so the
+        // deterministic tiebreak (sessionId DESC, deep-scan finding 16)
+        // decides which era is "latest".
+        val era2 = device.sessionKeys.createEra(contact.id, TestDevice.FAST_PARAMS)
+        val expectedWinner = listOf(era1, era2).maxByOrNull { it.sessionId.value }!!
+
+        assertEquals(expectedWinner.sessionId, device.sessionKeys.latestEra(contact.id)?.sessionId)
+        assertEquals(
+            expectedWinner.sessionId,
+            device.sessionKeys.erasForContact(contact.id).first().sessionId,
+        )
+        // Stable across repeated queries.
+        repeat(3) {
+            assertEquals(expectedWinner.sessionId, device.sessionKeys.latestEra(contact.id)?.sessionId)
+        }
+    }
 }

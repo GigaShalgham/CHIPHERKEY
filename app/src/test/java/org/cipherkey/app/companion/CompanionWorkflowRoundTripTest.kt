@@ -71,11 +71,19 @@ class CompanionWorkflowRoundTripTest {
         }
         override fun observeByContact(contactId: String) = state.value.let { list ->
             kotlinx.coroutines.flow.flowOf(
-                list.filter { it.contactId == contactId }.sortedByDescending { it.createdAt },
+                list.filter { it.contactId == contactId }
+                    .sortedWith(
+                        compareByDescending<SessionKeyEntity> { it.createdAt }.thenByDescending { it.sessionId },
+                    ),
             )
         }
         override suspend fun latestByContact(contactId: String): SessionKeyEntity? =
-            state.value.filter { it.contactId == contactId }.maxByOrNull { it.createdAt }
+            state.value
+                .filter { it.contactId == contactId }
+                .sortedWith(
+                    compareByDescending<SessionKeyEntity> { it.createdAt }.thenByDescending { it.sessionId },
+                )
+                .firstOrNull()
         override suspend fun byKeyId(keyId: ByteArray): SessionKeyEntity? =
             state.value.firstOrNull { it.keyId.contentEquals(keyId) }
         override suspend fun bySessionId(sessionId: String): SessionKeyEntity? =

@@ -3,6 +3,7 @@ package org.cipherkey.keyboard.input
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
+import org.cipherkey.core.messages.Ck1Limits
 
 /**
  * [TextFieldAccess] implementation backed by the IME's current
@@ -42,13 +43,33 @@ class InputConnectionTextField(
         val connection = connectionProvider() ?: return false
         connection.finishComposingText()
 
-        // Strategy 1: compute exact bounds around the cursor and delete them.
+        // An active selection is replaced natively by commitText — deleting
+        // around the cursor would leave it in place (deep-scan finding 22's
+        // replace-side sibling).
+        if (connection.getSelectedText(0) != null) {
+            return connection.commitText(newText, 1)
+        }
+
+        // Strategy 1: batch delete+insert around the cursor (deep-scan
+        // finding 21 — the pair used to be non-atomic: a successful
+        // deleteSurroundingText followed by a failed commitText destroyed
+        // the user's draft with no insertion and no rollback).
         val before = connection.getTextBeforeCursor(MAX_DRAFT_LENGTH, 0)
         val after = connection.getTextAfterCursor(MAX_DRAFT_LENGTH, 0)
         if (before != null && after != null) {
-            val deleted = connection.deleteSurroundingText(before.length, after.length)
-            if (deleted) {
-                return connection.commitText(newText, 1)
+            val batching = connection.beginBatchEdit()
+            try {
+                val deleted = connection.deleteSurroundingText(before.length, after.length)
+                val inserted = deleted && connection.commitText(newText, 1)
+                if (deleted && !inserted) {
+                    // Best-effort restore: true rollback is impossible over
+                    // IPC, but re-committing the deleted text is strictly
+                    // better than leaving the field empty.
+                    connection.commitText(before.toString() + after.toString(), 1)
+                }
+                if (inserted) return true
+            } finally {
+                if (batching) connection.endBatchEdit()
             }
         }
 
@@ -62,15 +83,40 @@ class InputConnectionTextField(
         return false
     }
 
-    override fun readDraft(): String? {
-        val connection = connectionProvider() ?: return null
-        val before = connection.getTextBeforeCursor(MAX_DRAFT_LENGTH, 0) ?: return null
-        val after = connection.getTextAfterCursor(MAX_DRAFT_LENGTH, 0) ?: return null
-        return before.toString() + after.toString()
+    override fun readDraft(): DraftRead {
+        val connection = connectionProvider() ?: return DraftRead.Unreadable
+
+        // Deep-scan finding 23: read at most limit+1 characters per side. A
+        // side that comes back at limit+1 PROVES the draft exceeds the
+        // protocol limit without hauling the whole field over Binder
+        // (previously up to 100,000 chars per side, ~400 KB, synchronously
+        // on the main dispatcher — while CK1 caps plaintext at 16 KiB).
+        // A side shorter than the request is exact.
+        val before = connection.getTextBeforeCursor(MAX_DRAFT_LENGTH, 0)
+            ?: return DraftRead.Unreadable
+        val after = connection.getTextAfterCursor(MAX_DRAFT_LENGTH, 0)
+            ?: return DraftRead.Unreadable
+        val selected = connection.getSelectedText(0) // null: no selection or unsupported
+
+        val limit = Ck1Limits.MAX_PLAINTEXT_BYTES
+        val selectionLength = selected?.length ?: 0
+        if (before.length > limit || after.length > limit || selectionLength > limit ||
+            before.length + selectionLength + after.length > limit
+        ) {
+            return DraftRead.TooLong
+        }
+
+        return DraftRead.Draft(
+            buildString {
+                append(before)
+                if (selected != null) append(selected) // deep-scan finding 22
+                append(after)
+            }.toString(),
+        )
     }
 
     private companion object {
-        /** Generous upper bound for draft reads (see security policy for input limits). */
-        const val MAX_DRAFT_LENGTH = 100_000
+        /** Protocol limit + 1: enough to detect overflow, never more. */
+        const val MAX_DRAFT_LENGTH = Ck1Limits.MAX_PLAINTEXT_BYTES + 1
     }
 }

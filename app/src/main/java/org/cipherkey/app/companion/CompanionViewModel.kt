@@ -119,10 +119,10 @@ class CompanionViewModel @Inject constructor(
     }
 
     /** Dead-end notice for unusable input (activity-level hardening). */
-    fun showNotice(notice: String, retryable: Boolean = false) {
+    fun showNotice(mode: CompanionMode, notice: String, retryable: Boolean = false) {
         if (!begun.compareAndSet(false, true)) return
         _state.value = CompanionUiState(
-            mode = _state.value.mode,
+            mode = mode,
             source = _state.value.source,
             phase = CompanionUiState.Phase.Notice,
             notice = notice,
@@ -137,7 +137,7 @@ class CompanionViewModel @Inject constructor(
         val s = _state.value
         val id = s.selectedContactId ?: return
         val draft = s.incoming ?: return
-        viewModelScope.launch {
+        launchSafely {
             _state.value = _state.value.copy(busy = true, notice = null)
             when (val out = messageCipher.encryptDraft(id, draft)) {
                 is EncryptOutcome.Encrypted -> {
@@ -171,7 +171,6 @@ class CompanionViewModel @Inject constructor(
             }
         }
     }
-
     /** Unlock (if needed) and encrypt in one step, from the prepare card. */
     fun unlockAndEncrypt(passphrase: CharArray) {
         val id = _state.value.selectedContactId ?: run {
@@ -194,10 +193,15 @@ class CompanionViewModel @Inject constructor(
     /** Copy the current result to the clipboard (explicit user action). */
     fun copyResult() {
         val result = _state.value.resultText ?: return
-        if (clipboard.setText(result)) {
-            _state.value = _state.value.copy(copied = true)
+        val sensitive = _state.value.mode == CompanionMode.DECRYPT
+        // Decrypted plaintext is marked sensitive (deep-scan finding 17):
+        // Android 13+ then hides the clipboard preview. Envelopes are not
+        // secret by definition.
+        val copied = if (sensitive) clipboard.setSensitiveText(result) else clipboard.setText(result)
+        _state.value = if (copied) {
+            _state.value.copy(copied = true)
         } else {
-            _state.value = _state.value.copy(notice = "Could not access the clipboard.")
+            _state.value.copy(notice = "Could not access the clipboard.")
         }
     }
 
@@ -212,6 +216,10 @@ class CompanionViewModel @Inject constructor(
      */
     fun beginFromClipboard(mode: CompanionMode) {
         if (!begun.compareAndSet(false, true)) return
+        // Set the mode BEFORE the first clipboard read: every early-exit
+        // notice below must be headed "Decrypt" on decrypt launches, not
+        // with the default "Encrypt" (deep-scan finding 4).
+        _state.value = _state.value.copy(mode = mode)
         when (val clip = clipboard.read()) {
             is ClipboardRead.Text -> when (
                 val parsed = if (mode == CompanionMode.ENCRYPT) {
@@ -267,7 +275,7 @@ class CompanionViewModel @Inject constructor(
 
     /** Unguarded encrypt flow (the public entry owns the begun flag). */
     private fun startEncryptFlow(text: String, source: TextSource, readOnly: Boolean) {
-        viewModelScope.launch {
+        launchSafely {
             val contacts = contactsRepository.observeContacts().first()
             val unlocked = contacts.map { it.id }
                 .filter { messageCipher.isUnlocked(it) }
@@ -305,7 +313,7 @@ class CompanionViewModel @Inject constructor(
             readOnly = readOnly,
             busy = true,
         )
-        viewModelScope.launch { decryptInternal(text) }
+        launchSafely { decryptInternal(text) }
     }
 
     /** Clipboard-outcome notice without re-checking the begun flag. */
@@ -363,32 +371,57 @@ class CompanionViewModel @Inject constructor(
         passphrase: CharArray,
         andThen: suspend () -> Unit,
     ) {
-        viewModelScope.launch {
-            _state.value = _state.value.copy(busy = true, notice = null)
-            val outcome = messageCipher.unlockContact(contactId, passphrase)
-            passphrase.wipe()
-            when (outcome) {
-                UnlockOutcome.Unlocked, UnlockOutcome.AlreadyUnlocked -> {
-                    _state.value = _state.value.copy(
-                        unlocked = _state.value.unlocked + contactId,
+        launchSafely {
+            try {
+                _state.value = _state.value.copy(busy = true, notice = null)
+                val outcome = messageCipher.unlockContact(contactId, passphrase)
+                when (outcome) {
+                    UnlockOutcome.Unlocked, UnlockOutcome.AlreadyUnlocked -> {
+                        _state.value = _state.value.copy(
+                            unlocked = _state.value.unlocked + contactId,
+                        )
+                        andThen()
+                    }
+                    UnlockOutcome.WrongPassphrase -> _state.value = _state.value.copy(
+                        busy = false,
+                        notice = "Wrong passphrase.",
                     )
-                    andThen()
+                    UnlockOutcome.NoSession -> _state.value = _state.value.copy(
+                        busy = false,
+                        notice = "This contact has no key era yet. Create or import one in the app first.",
+                    )
+                    is UnlockOutcome.Rejected -> _state.value = _state.value.copy(
+                        busy = false,
+                        notice = "Passphrase rejected: ${outcome.reason}",
+                    )
+                    is UnlockOutcome.Failed -> _state.value = _state.value.copy(
+                        busy = false,
+                        notice = "Unlock failed: ${outcome.reason}",
+                    )
                 }
-                UnlockOutcome.WrongPassphrase -> _state.value = _state.value.copy(
+            } finally {
+                // The passphrase is wiped on EVERY path — including a thrown
+                // exception (deep-scan finding 12: an unexpected error used
+                // to crash the process and leak the buffer).
+                passphrase.wipe()
+            }
+        }
+    }
+
+    /**
+     * viewModelScope.launch + never-crash wrapper (deep-scan finding 12):
+     * every repository/crypto call in the companion flows funnels through
+     * here, so an unexpected exception surfaces as a notice with busy
+     * cleared instead of killing the process with the sheet frozen.
+     */
+    private fun launchSafely(block: suspend () -> Unit) {
+        viewModelScope.launch {
+            try {
+                block()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
                     busy = false,
-                    notice = "Wrong passphrase.",
-                )
-                UnlockOutcome.NoSession -> _state.value = _state.value.copy(
-                    busy = false,
-                    notice = "This contact has no key era yet. Create or import one in the app first.",
-                )
-                is UnlockOutcome.Rejected -> _state.value = _state.value.copy(
-                    busy = false,
-                    notice = "Passphrase rejected: ${outcome.reason}",
-                )
-                is UnlockOutcome.Failed -> _state.value = _state.value.copy(
-                    busy = false,
-                    notice = "Unlock failed: ${outcome.reason}",
+                    notice = "Unexpected error: ${e.message ?: e.javaClass.simpleName}",
                 )
             }
         }

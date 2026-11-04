@@ -14,6 +14,8 @@ import org.cipherkey.app.companion.ProcessTextContract.SelectedText
 @AndroidEntryPoint
 class ShareDecryptActivity : BaseCompanionActivity() {
 
+    override val companionMode: CompanionMode = CompanionMode.DECRYPT
+
     override fun dispatchIntent(intent: Intent) {
         val shared = when (intent.action) {
             Intent.ACTION_SEND ->

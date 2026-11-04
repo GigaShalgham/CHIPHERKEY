@@ -16,6 +16,7 @@ import org.cipherkey.core.crypto.PassphraseCryptoProvider
 import org.cipherkey.core.crypto.ProtocolRandom
 import org.cipherkey.core.crypto.RandomSource
 import org.cipherkey.core.keys.FixedKeyProtector
+import org.cipherkey.core.messages.Ck1Limits
 import org.cipherkey.core.sessions.KeySessionManager
 import org.cipherkey.core.sessions.TimeSource
 import org.cipherkey.data.database.ContactDao
@@ -26,10 +27,12 @@ import org.cipherkey.data.repository.ContactRepository
 import org.cipherkey.data.repository.EncryptOutcome
 import org.cipherkey.data.repository.MessageCipher
 import org.cipherkey.data.repository.SessionKeyRepository
+import org.cipherkey.keyboard.input.DraftRead
 import org.cipherkey.keyboard.input.TextFieldAccess
 import org.cipherkey.security.clipboard.ClipboardAccess
 import org.cipherkey.security.clipboard.ClipboardRead
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -56,9 +59,15 @@ private class FakeSessionKeyDao : SessionKeyDao {
         state.value = state.value.filterNot { it.sessionId == session.sessionId } + session
     }
     override fun observeByContact(contactId: String): Flow<List<SessionKeyEntity>> =
-        state.map { list -> list.filter { it.contactId == contactId }.sortedByDescending { it.createdAt } }
+        state.map { list ->
+            list.filter { it.contactId == contactId }
+                .sortedWith(compareByDescending<SessionKeyEntity> { it.createdAt }.thenByDescending { it.sessionId })
+        }
     override suspend fun latestByContact(contactId: String): SessionKeyEntity? =
-        state.value.filter { it.contactId == contactId }.maxByOrNull { it.createdAt }
+        state.value
+            .filter { it.contactId == contactId }
+            .sortedWith(compareByDescending<SessionKeyEntity> { it.createdAt }.thenByDescending { it.sessionId })
+            .firstOrNull()
     override suspend fun byKeyId(keyId: ByteArray): SessionKeyEntity? =
         state.value.firstOrNull { it.keyId.contentEquals(keyId) }
     override suspend fun bySessionId(sessionId: String): SessionKeyEntity? =
@@ -81,7 +90,11 @@ private class FakeSessionKeyDao : SessionKeyDao {
 }
 
 /** In-memory text field: records everything the controller inserts. */
-private class FakeTextField(var text: String = "") : TextFieldAccess {
+private class FakeTextField(
+    var text: String = "",
+    /** Scriptable: emulates an editor whose text cannot be read at all. */
+    var unreadable: Boolean = false,
+) : TextFieldAccess {
     override fun commitText(text: String): Boolean {
         this.text += text
         return true
@@ -95,7 +108,11 @@ private class FakeTextField(var text: String = "") : TextFieldAccess {
         text = newText
         return true
     }
-    override fun readDraft(): String? = text
+    override fun readDraft(): DraftRead = when {
+        unreadable -> DraftRead.Unreadable
+        text.length > Ck1Limits.MAX_PLAINTEXT_BYTES -> DraftRead.TooLong
+        else -> DraftRead.Draft(text)
+    }
     override val isSensitiveField: Boolean get() = false
 }
 
@@ -252,7 +269,7 @@ class ImeControllerTest {
     }
 
     @Test
-    fun `locking the active contact clears the unlocked badge`() = runTest {
+    fun `locking the active contact clears the unlocked badge and the preview`() = runTest {
         val harness = Harness(CoroutineScope(StandardTestDispatcher(testScheduler)))
         val contactId = harness.seedContact()
         advanceUntilIdle()
@@ -261,8 +278,56 @@ class ImeControllerTest {
         harness.controller.selectContact(contactId)
         advanceUntilIdle()
 
+        // Produce a decrypted preview first (deep-scan finding 24).
+        val envelope = (harness.cipher.encryptDraft(contactId, "secret reply") as EncryptOutcome.Encrypted).envelope
+        harness.clipboard.current = envelope
+        harness.controller.requestDecryptClipboard()
+        advanceUntilIdle()
+        assertNotNull(harness.controller.preview.value)
+
         harness.controller.lockActiveContact()
         advanceUntilIdle()
         assertTrue(harness.controller.uiState.value.unlockedContactIds.isEmpty())
+        assertNull(harness.controller.preview.value)
+    }
+
+    @Test
+    fun `unreadable draft is reported, not treated as empty`() = runTest {
+        val harness = Harness(CoroutineScope(StandardTestDispatcher(testScheduler)))
+        val contactId = harness.seedContact()
+        advanceUntilIdle()
+        harness.cipher.unlockContact(contactId, passphrase.toCharArray())
+        harness.textField.text = "hello bob"
+        harness.textField.unreadable = true
+
+        harness.controller.requestEncryptDraft()
+        advanceUntilIdle()
+
+        // Deep-scan finding 22: unreadable must not collapse into "nothing
+        // to encrypt".
+        val notice = harness.controller.notice.value
+        assertNotNull(notice)
+        assertTrue(notice!!.contains("Could not read"))
+        // The field was left untouched.
+        assertEquals("hello bob", harness.textField.text)
+    }
+
+    @Test
+    fun `oversized draft is rejected without truncation`() = runTest {
+        val harness = Harness(CoroutineScope(StandardTestDispatcher(testScheduler)))
+        val contactId = harness.seedContact()
+        advanceUntilIdle()
+        harness.cipher.unlockContact(contactId, passphrase.toCharArray())
+        harness.textField.text = "x".repeat(Ck1Limits.MAX_PLAINTEXT_BYTES + 1)
+
+        harness.controller.requestEncryptDraft()
+        advanceUntilIdle()
+
+        // Deep-scan finding 23: honest rejection, never a silent truncation
+        // into a shorter encrypted message.
+        val notice = harness.controller.notice.value
+        assertNotNull(notice)
+        assertTrue(notice!!.contains("16 KiB"))
+        assertFalse(harness.textField.text.startsWith("CK1:"))
     }
 }

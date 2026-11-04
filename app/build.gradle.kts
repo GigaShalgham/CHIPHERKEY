@@ -75,6 +75,9 @@ android {
 
     buildFeatures {
         compose = true
+        // VERSION_NAME is surfaced to the About card via BuildConfig
+        // (deep-scan finding 7: the hardcoded "0.1.0" there was stale).
+        buildConfig = true
     }
 
     compileOptions {

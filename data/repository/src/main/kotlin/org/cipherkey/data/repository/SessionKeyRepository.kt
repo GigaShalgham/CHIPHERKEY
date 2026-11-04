@@ -81,7 +81,21 @@ class SessionKeyRepository(
                 createdAt = now,
                 lastUsedAt = null,
             )
-            sessionKeyDao.upsert(entity)
+            try {
+                sessionKeyDao.upsert(entity)
+            } catch (e: Exception) {
+                // Lost a check-then-act race on the unique keyId index
+                // (deep-scan finding 16): a concurrent import of the same
+                // invite inserted the keyId between our read and write.
+                // Re-read and classify instead of crashing; rethrow when the
+                // insert failed for some other reason.
+                val winner = sessionKeyDao.byKeyId(invite.keyId) ?: throw e
+                return@withContext if (winner.contactId == contactId.value) {
+                    EraImport.AlreadyPresent(winner.toDomain())
+                } else {
+                    EraImport.KeyBelongsToOtherContact
+                }
+            }
             EraImport.Imported(entity.toDomain())
         }
 

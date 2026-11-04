@@ -46,13 +46,19 @@ class FakeSessionKeyDao : SessionKeyDao {
         state.value = state.value.filterNot { it.sessionId == session.sessionId } + session
     }
 
+    // Mirrors the Room query's deterministic tiebreak (deep-scan finding
+    // 16): same-millisecond eras order by sessionId DESC.
     override fun observeByContact(contactId: String): Flow<List<SessionKeyEntity>> =
         state.map { list ->
-            list.filter { it.contactId == contactId }.sortedByDescending { it.createdAt }
+            list.filter { it.contactId == contactId }
+                .sortedWith(compareByDescending<SessionKeyEntity> { it.createdAt }.thenByDescending { it.sessionId })
         }
 
     override suspend fun latestByContact(contactId: String): SessionKeyEntity? =
-        state.value.filter { it.contactId == contactId }.maxByOrNull { it.createdAt }
+        state.value
+            .filter { it.contactId == contactId }
+            .sortedWith(compareByDescending<SessionKeyEntity> { it.createdAt }.thenByDescending { it.sessionId })
+            .firstOrNull()
 
     override suspend fun byKeyId(keyId: ByteArray): SessionKeyEntity? =
         state.value.firstOrNull { it.keyId.contentEquals(keyId) }
@@ -89,8 +95,14 @@ class MutableTimeSource(var now: Long = 1_000_000L) : TimeSource {
  * A fully wired "device": its own DAOs, its own key protector (emulating the
  * device-bound Android Keystore) and its own in-memory session manager.
  * Two devices in one test emulate the sender's and the receiver's phones.
+ *
+ * The protector is injectable so tests can also emulate a FAILING Keystore
+ * (deep-scan finding 2: infrastructure errors must not be reported as
+ * "wrong passphrase").
  */
-class TestDevice {
+class TestDevice(
+    val protector: org.cipherkey.core.keys.KeyProtector = FixedKeyProtector(),
+) {
     val contactDao = FakeContactDao()
     val sessionKeyDao = FakeSessionKeyDao()
     val time = MutableTimeSource()
@@ -113,9 +125,6 @@ class TestDevice {
         timeSource = time,
         deriveContext = Dispatchers.Unconfined,
     )
-
-    /** Fresh random protector key per device: emulates Keystore device binding. */
-    val protector = FixedKeyProtector()
 
     val cipher = MessageCipher(
         contacts = contacts,

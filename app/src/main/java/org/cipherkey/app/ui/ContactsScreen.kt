@@ -118,7 +118,7 @@ fun ContactsScreen(viewModel: ContactsViewModel) {
         AddContactDialog(
             onDismiss = { showAddDialog = false },
             onCreate = { name, invite, profile, onDone ->
-                viewModel.createContact(name, invite, profile) { ok ->
+                viewModel.createContact(name, invite, profile) { ok, _ ->
                     onDone(ok)
                     if (ok) showAddDialog = false
                 }
@@ -140,6 +140,7 @@ fun ContactsScreen(viewModel: ContactsViewModel) {
                 viewModel.deleteContact(contact.id)
                 detailContact = null
             },
+            onCopyInvite = { text -> viewModel.copyText(text) },
             onDismiss = { detailContact = null },
         )
     }
@@ -187,6 +188,10 @@ private fun AddContactDialog(
     var invite by remember { mutableStateOf("") }
     var profile by remember { mutableStateOf(Argon2Profile.DEFAULT) }
     var busy by remember { mutableStateOf(false) }
+    // Deep-scan finding 6: failures are shown INSIDE the dialog — the
+    // home-screen feedback column is behind the scrim and was invisible at
+    // the moment the error happened.
+    var error by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
@@ -210,10 +215,21 @@ private fun AddContactDialog(
                 )
                 OutlinedTextField(
                     value = invite,
-                    onValueChange = { invite = it },
+                    onValueChange = {
+                        invite = it
+                        error = null
+                    },
                     label = { Text("Invite code (optional)") },
                     singleLine = true,
+                    isError = error != null,
                 )
+                error?.let { message ->
+                    Text(
+                        text = message,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
                 Text("Argon2id strength", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 Argon2Profile.entries.forEach { candidate ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -236,7 +252,11 @@ private fun AddContactDialog(
                 enabled = name.isNotBlank() && !busy,
                 onClick = {
                     busy = true
-                    onCreate(name, invite.ifBlank { null }, profile) { busy = false }
+                    error = null
+                    onCreate(name, invite.ifBlank { null }, profile) { ok ->
+                        busy = false
+                        if (!ok) error = "Creation failed — check the invite code and try again."
+                    }
                 },
             ) { Text("Create") }
         },
@@ -255,6 +275,7 @@ private fun ContactDetailDialog(
     onUnlock: (CharArray, (UnlockOutcome) -> Unit) -> Unit,
     onLock: () -> Unit,
     onDelete: () -> Unit,
+    onCopyInvite: (String) -> Boolean,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -262,6 +283,8 @@ private fun ContactDetailDialog(
     var unlockMessage by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    // Deep-scan finding 14: copy feedback lives where the button is.
+    var inviteCopyMessage by remember { mutableStateOf<String?>(null) }
 
     val latestEra = eras.firstOrNull()
 
@@ -335,10 +358,14 @@ private fun ContactDetailDialog(
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = {
-                            val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
-                            clipboard?.setPrimaryClip(
-                                android.content.ClipData.newPlainText("CipherKey invite", latestEra.inviteCode),
-                            )
+                            // Deep-scan finding 14: through the ClipboardAccess
+                            // chokepoint (not a raw ClipboardManager), with
+                            // honest success/failure feedback next to it.
+                            inviteCopyMessage = if (onCopyInvite(latestEra.inviteCode)) {
+                                "Copied ✓"
+                            } else {
+                                "Copy failed — clipboard unavailable"
+                            }
                         }) { Text("Copy invite") }
                         TextButton(onClick = {
                             val send = Intent(Intent.ACTION_SEND).apply {
@@ -347,6 +374,17 @@ private fun ContactDetailDialog(
                             }
                             context.startActivity(Intent.createChooser(send, "Share invite"))
                         }) { Text("Share") }
+                    }
+                    inviteCopyMessage?.let { message ->
+                        Text(
+                            message,
+                            fontSize = 12.sp,
+                            color = if (message.startsWith("Copied")) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                        )
                     }
                 } else {
                     Text("No key era yet.", fontSize = 13.sp)

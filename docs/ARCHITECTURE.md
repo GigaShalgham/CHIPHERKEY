@@ -82,8 +82,8 @@ passphrase → KeySessionManager.deriveKey   (Argon2id on background dispatcher)
 ```
 creation:   ProtocolRandom.keyId()/salt()  ─► Room session_keys (public data)
 unlock:     passphrase + salt ─Argon2id─► 256-bit key (memory only)
-at rest:    key wrapped by AndroidKeystoreKeyProtector ─► Room (device-bound)
-lock/expiry/field-switch/service-destroy:  Arrays.fill(0) on key material
+at rest:    verifier digest wrapped by AndroidKeystoreKeyProtector ─► Room (device-bound; never the raw key)
+lock/expiry/replace/periodic-sweep:             Arrays.fill(0) on key material
 ```
 
 ## Threading model
