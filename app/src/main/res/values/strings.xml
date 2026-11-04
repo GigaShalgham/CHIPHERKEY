@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">CipherKey</string>
-    <string name="tagline">Encrypted communication layer for your keyboard</string>
+    <string name="tagline">Private encryption for any messenger — no servers, no accounts</string>
     <string name="nav_onboarding">Onboarding</string>
-    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_dashboard">Home</string>
     <string name="nav_contacts">Contacts</string>
     <string name="nav_settings">Security settings</string>
     <string name="nav_about">About</string>
+
+    <!-- Companion entry labels (user-visible in selection toolbar / sharesheet).
+         Keep short: OEMs truncate long labels. -->
+    <string name="process_text_encrypt_label">Encrypt (CipherKey)</string>
+    <string name="process_text_decrypt_label">Decrypt (CipherKey)</string>
+    <string name="share_decrypt_label">Decrypt with CipherKey</string>
 </resources>

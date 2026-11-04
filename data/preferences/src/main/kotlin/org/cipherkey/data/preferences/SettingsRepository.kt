@@ -63,10 +63,34 @@ class SettingsRepository(
         }
     }
 
+    /**
+     * Sticky companion contact: the last contact the user encrypted for,
+     * so the PROCESS_TEXT encrypt flow usually needs zero extra taps
+     * (spec 003, FR-005).
+     *
+     * Pure storage — no existence validation here (this module cannot see
+     * Room). Callers must clamp: if the id no longer matches a contact,
+     * treat it as null.
+     */
+    val lastContactId: Flow<String?> = dataStore.data.map { prefs ->
+        prefs[KEY_LAST_CONTACT_ID]
+    }
+
+    suspend fun setLastContactId(contactId: String?) {
+        dataStore.edit { prefs ->
+            if (contactId == null) {
+                prefs.remove(KEY_LAST_CONTACT_ID)
+            } else {
+                prefs[KEY_LAST_CONTACT_ID] = contactId
+            }
+        }
+    }
+
     companion object {
         private val KEY_SESSION_TIMEOUT = longPreferencesKey("session_timeout_millis")
         private val KEY_ARGON2_PROFILE = stringPreferencesKey("argon2_profile")
         private val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+        private val KEY_LAST_CONTACT_ID = stringPreferencesKey("last_contact_id")
 
         /** Factory for the process-wide DataStore instance. */
         fun defaultDataStore(context: Context): DataStore<Preferences> = context.cipherKeyDataStore

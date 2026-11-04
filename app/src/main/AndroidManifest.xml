@@ -4,9 +4,10 @@
     <!--
       CipherKey deliberately requests ZERO Android permissions.
 
-      The keyboard reads the clipboard only after an explicit user action
-      (tap on "Decrypt") and only while CipherKey is the active input method,
-      which is permitted without any runtime permission.
+      The companion architecture (spec 003) is entirely permission-free:
+      text arrives via ACTION_PROCESS_TEXT / ACTION_SEND or is read from
+      the clipboard only after an explicit user action while CipherKey
+      is in the foreground (permitted without any runtime permission).
     -->
 
     <application
@@ -25,6 +26,55 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Companion entries (Option E). Labels are user-visible in the
+          system selection toolbar and sharesheet; keep them short.
+          noHistory + excludeFromRecents: utility flows, nothing kept in
+          recents; an abandoned flow is discarded (passphrase included).
+        -->
+
+        <activity
+            android:name=".companion.EncryptActivity"
+            android:exported="true"
+            android:label="@string/process_text_encrypt_label"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.CipherKey">
+            <intent-filter android:label="@string/process_text_encrypt_label">
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".companion.DecryptActivity"
+            android:exported="true"
+            android:label="@string/process_text_decrypt_label"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.CipherKey">
+            <intent-filter android:label="@string/process_text_decrypt_label">
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".companion.ShareDecryptActivity"
+            android:exported="true"
+            android:label="@string/share_decrypt_label"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.CipherKey">
+            <intent-filter android:label="@string/share_decrypt_label">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
     </application>

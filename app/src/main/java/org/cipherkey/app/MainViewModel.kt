@@ -1,36 +1,35 @@
 package org.cipherkey.app
 
-import android.content.Context
-import android.provider.Settings
-import android.view.inputmethod.InputMethodManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.cipherkey.data.repository.ContactRepository
+import org.cipherkey.data.repository.MessageCipher
 
-/** Live status of the CipherKey input method in the system. */
-data class ImeStatus(
-    val enabled: Boolean = false,
-    val selectedAsDefault: Boolean = false,
-)
-
+/**
+ * Home-screen state for the companion architecture (spec 003).
+ *
+ * The IME-status plumbing from v0.1 was removed together with the
+ * `:keyboard` dependency: the shipped app no longer registers an input
+ * method at all, so there is nothing to query.
+ */
 @HiltViewModel
 class MainViewModel @Inject constructor(
-    @ApplicationContext private val appContext: Context,
     private val contactsRepository: ContactRepository,
+    private val messageCipher: MessageCipher,
 ) : ViewModel() {
-
-    private val _imeStatus = MutableStateFlow(ImeStatus())
-    val imeStatus = _imeStatus.asStateFlow()
 
     private val _contactCount = MutableStateFlow(0)
     val contactCount = _contactCount.asStateFlow()
+
+    private val _unlockedCount = MutableStateFlow(0)
+    val unlockedCount = _unlockedCount.asStateFlow()
 
     init {
         refresh()
@@ -38,15 +37,10 @@ class MainViewModel @Inject constructor(
 
     fun refresh() {
         viewModelScope.launch(Dispatchers.IO) {
-            val imm = appContext.getSystemService(InputMethodManager::class.java)
-            val enabled = imm?.enabledInputMethodList
-                ?.any { it.packageName == appContext.packageName } == true
-            val selected = Settings.Secure.getString(
-                appContext.contentResolver,
-                Settings.Secure.DEFAULT_INPUT_METHOD,
-            )?.startsWith(appContext.packageName) == true
-            _imeStatus.value = ImeStatus(enabled = enabled, selectedAsDefault = selected)
             _contactCount.value = contactsRepository.count()
+            _unlockedCount.value = contactsRepository.observeContacts()
+                .first()
+                .count { messageCipher.isUnlocked(it.id) }
         }
     }
 
