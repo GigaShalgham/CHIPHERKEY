@@ -90,7 +90,10 @@ report (sources, labels, table completeness), not code execution.
 - [ ] T030 Maintainer captures logcat from the failing device (or
       reproduces with the diagnostic procedure in the report) to close
       the open crash-cause question
-- [ ] T031 Maintainer re-provides the GitHub PAT so the branch can be
+- [x] T031 Maintainer re-provides the GitHub PAT so the branch can be
       pushed; until then the work lives locally only
+      (done: PAT re-provided and stored mode 0600 outside repos;
+      branch pushed, remote SHA ffb4651844ad5def7877022daaf31da96d23032d
+      verified equal to local via API)
 - [ ] T032 Maintainer reviews the recommendation and opens the
       implementation spec for the chosen architecture (spec 003)
