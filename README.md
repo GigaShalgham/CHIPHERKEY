@@ -1,5 +1,8 @@
 # CipherKey
 
+[![CI](https://github.com/GigaShalgham/CHIPHERKEY/actions/workflows/android-ci.yml/badge.svg)](https://github.com/GigaShalgham/CHIPHERKEY/actions/workflows/android-ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 **A local-first encryption layer that lives inside your Android keyboard.**
 
 CipherKey adds end-to-end message encryption to the messaging apps you already
@@ -21,7 +24,7 @@ Receive: copy CK1:... → tap Decrypt → passphrase → preview → Insert
 |---|---|
 | Build (debug APK) | ✅ builds from source (`./gradlew assembleDebug`) |
 | IME integration (Compose UI, QWERTY + symbols) | ✅ implemented, unit-tested (logic) |
-| Mode A crypto: Argon2id + AES-256-GCM | ✅ implemented, 190 unit tests, RFC 9106 vector verified |
+| Mode A crypto: Argon2id + AES-256-GCM | ✅ implemented, 140 unique unit tests, RFC 9106 vector verified |
 | CK1 wire protocol + CKS1 invites | ✅ implemented, golden vector pinned |
 | Contact / key-era management (Room) | ✅ implemented |
 | Android Keystore key wrapping | ✅ implemented (needs on-device verification) |
@@ -41,7 +44,7 @@ platform 36 and build-tools 36.0.0 (or let Gradle's SDK tooling handle it).
 
 ```bash
 ./gradlew assembleDebug          # debug APK  -> app/build/outputs/apk/debug/
-./gradlew test                   # full unit-test suite (190 tests)
+./gradlew test                   # full unit-test suite (140 unique tests)
 ```
 
 The application requests **no Android system permissions** and contains **no
@@ -96,6 +99,28 @@ docs/           PROTOCOL, ARCHITECTURE, THREAT_MODEL, PLUGINS
 The keyboard module contains **no cryptographic implementation**; it consumes
 the `MessageCipher` facade from `:data:repository`. Module dependency
 directions are acyclic and documented in `docs/ARCHITECTURE.md`.
+
+## Releases
+
+Prebuilt APKs live under
+[GitHub Releases](https://github.com/GigaShalgham/CHIPHERKEY/releases).
+Every release page states the build type, the signing certificate SHA-256
+fingerprint, and the APK's SHA-256 checksum — verify before installing:
+
+```bash
+sha256sum CipherKey-v0.1.0-alpha-release.apk
+apksigner verify --print-certs CipherKey-v0.1.0-alpha-release.apk
+```
+
+CI artifacts (`cipherkey-debug-apk`) are unsigned debug builds for
+experimentation; only GitHub Releases carry signed builds.
+
+## Community & workflow
+
+- [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security policy](SECURITY.md) · [Changelog](CHANGELOG.md)
+- Engineering follows [GitHub Spec Kit](https://github.com/github/spec-kit):
+  the project Constitution and feature specifications live under
+  [`specs/`](specs/) (Constitution: [`.specify/memory/constitution.md`](.specify/memory/constitution.md)).
 
 ## License
 

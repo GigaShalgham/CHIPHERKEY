@@ -11,7 +11,7 @@ out, and why.
 | Item | Status |
 |---|---|
 | Debug APK built from source | ✅ `app/build/outputs/apk/debug/app-debug.apk` (16,123,699 bytes) |
-| Full unit-test suite | ✅ **190 tests / 15 classes / 0 failures** (`./gradlew test`) |
+| Full unit-test suite | ✅ **140 unique tests / 15 classes / 0 failures** (`./gradlew test`; the 5 Android-library test classes additionally re-run under the release variant — see §4.1) |
 | Cryptographic core verified against RFC 9106 | ✅ Argon2id known-answer vector, byte-identical |
 | Wire protocol pinned | ✅ CK1 golden vector asserted in tests and documented |
 | Two-device interoperability | ✅ simulated end-to-end at facade level (send→envelope→receive→decrypt) |
@@ -37,14 +37,17 @@ out, and why.
 Build commands:
 
 ```bash
-./gradlew test            # 190 unit tests across 15 modules
+./gradlew test            # 140 unique unit tests, 15 classes, 7 modules
 ./gradlew assembleDebug   # debug APK
 ```
 
 Machine-specific notes (not in the repo): the build sandbox uses
 `JAVA_HOME=/home/z/tools/jdk-21.0.13+9` and restricts Gradle toolchain
 detection to that JDK via the user-level `~/.gradle/gradle.properties`
-because the system JVM installation is JRE-only.
+because the system JVM installation is JRE-only. The same user-level file
+caps the daemon heap (`-Xmx2560m`): the sandbox has 3.9 GiB RAM and no
+swap, and a single `clean test assembleDebug` invocation is OOM-killed at
+the dex-merge step, so tests and packaging are run as two invocations.
 
 ## 3. What was built
 
@@ -99,7 +102,16 @@ across 15 Gradle modules:
 
 ## 4. Verification evidence
 
-### 4.1 Test inventory (190 tests, all green)
+### 4.1 Test inventory (140 unique tests, all green)
+
+Counted from the JUnit XML result files (machine-readable, deduplicated
+by test class). Android-library modules execute their unit tests under
+both the debug and the release variant, so the 5 affected classes
+(50 tests) run twice per `./gradlew test` invocation — 190 raw
+executions. An earlier revision of this report quoted the raw figure as
+the total; the unique count above is the meaningful one. The counting
+script lives in the maintainers' tooling and reads
+`build/test-results/{test,testDebugUnitTest,testReleaseUnitTest}`.
 
 | Test class | Tests | Covers |
 |---|---|---|
@@ -135,7 +147,7 @@ the reference C implementation — byte-identical.
 | Type in third-party app and encrypt draft | ✅ implemented (InputConnection read/replace with two fallback strategies); on-device verification pending |
 | Ciphertext replaces the draft and can be sent | ✅ `replaceAll` implemented; fallback copies the envelope to the clipboard if the field refuses editing |
 | Second installation can decrypt | ✅ verified at facade level (two independent TestDevices: separate DBs, separate protectors) |
-| Wrong credentials and tampered messages rejected | ✅ 190-test suite covers both paths |
+| Wrong credentials and tampered messages rejected | ✅ 140-test suite covers both paths |
 | Plaintext only shown after successful authentication | ✅ preview panel appears exclusively from `DecryptionResult.Success` |
 | Automated tests for core crypto | ✅ see §4.1 |
 
