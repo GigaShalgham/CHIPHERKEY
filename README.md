@@ -39,6 +39,7 @@ When an app's selection toolbar is unavailable, the Home screen offers an
 | Mode B: public-key (Signal et al.) | ❌ interface only — evaluated and deferred, see docs/PLUGINS.md |
 | Old-key-era message decryption | ❌ v0.2 limitation (documented) |
 | Built-in keyboard (IME) | ❌ removed from the APK in v0.2 — the `:keyboard` module stays in-repo, compiled and tested as a dormant library |
+| v0.3.0-alpha (floating assistant, fingerprint unlock, tools screen) | 🚧 source was lost before commit; reference decompilation preserved on `recovered/v0.3.0-alpha-from-apk`, re-implementation tracked in `specs/005-v0.3.0-recovery` |
 
 See `ENGINEERING_REPORT.md` (v0.1 history), `docs/DEEP-SCAN-2026-11-05.md`
 (the full audit) and `CHANGELOG.md` for engineering status and known
