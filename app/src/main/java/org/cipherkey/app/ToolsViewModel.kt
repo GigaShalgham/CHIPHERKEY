@@ -15,6 +15,7 @@ import org.cipherkey.app.companion.CompanionMode
 import org.cipherkey.app.security.BiometricKeyStore
 import org.cipherkey.app.security.BiometricPromptRequest
 import org.cipherkey.core.common.ContactId
+import org.cipherkey.core.common.SessionId
 import org.cipherkey.core.sessions.wipe
 import org.cipherkey.data.preferences.SettingsRepository
 import org.cipherkey.data.repository.Contact
@@ -45,6 +46,13 @@ data class ToolsUiState(
     val unlockNeeded: Boolean = false,
     val pendingContactId: ContactId? = null,
     val unlockContactName: String? = null,
+    /**
+     * v0.4.0: non-null while the pending unlock is for a SUPERSEDED key era
+     * (old-era envelope). The passphrase prompt then explains that the OLD
+     * era's passphrase is wanted — and the biometric offer stays off (a
+     * fingerprint wrap is bound to the latest era only).
+     */
+    val pendingEraSessionId: SessionId? = null,
     /** v0.3.0: a remembered fingerprint wrap exists for the pending contact. */
     val biometricOffered: Boolean = false,
     /** v0.3.0: non-null while the system biometric prompt should be shown. */
@@ -147,7 +155,13 @@ class ToolsViewModel @Inject constructor(
         }
     }
 
-    /** Unlock (passphrase) and continue the pending operation. */
+    /** Unlock (passphrase) and continue the pending operation.
+     *
+     * v0.4.0: when the pending unlock is for a superseded era
+     * ([ToolsUiState.pendingEraSessionId]), it goes through
+     * [MessageCipher.unlockEra] instead — the contact is NOT marked unlocked
+     * for sending, and no fingerprint remember offer is made.
+     */
     fun unlockAndContinue(passphrase: CharArray) {
         val id = _state.value.pendingContactId ?: _state.value.selectedContactId ?: run {
             passphrase.wipe(); return
@@ -155,21 +169,34 @@ class ToolsViewModel @Inject constructor(
         val text = pendingText ?: run {
             passphrase.wipe(); return
         }
+        val eraSessionId = _state.value.pendingEraSessionId
         launchSafely {
             try {
                 _state.value = _state.value.copy(busy = true, notice = null)
-                when (val outcome = messageCipher.unlockContact(id, passphrase)) {
+                val outcome = if (eraSessionId != null) {
+                    messageCipher.unlockEra(id, eraSessionId, passphrase)
+                } else {
+                    messageCipher.unlockContact(id, passphrase)
+                }
+                when (outcome) {
                     UnlockOutcome.Unlocked, UnlockOutcome.AlreadyUnlocked -> {
                         _state.value = _state.value.copy(
-                            unlocked = _state.value.unlocked + id,
+                            unlocked = if (eraSessionId != null) {
+                                _state.value.unlocked
+                            } else {
+                                _state.value.unlocked + id
+                            },
                             unlockNeeded = false,
+                            pendingEraSessionId = null,
                         )
-                        lastUnlockedContactId = id
+                        if (eraSessionId == null) {
+                            lastUnlockedContactId = id
+                            offerRemember(id)
+                        }
                         when (pendingMode) {
                             CompanionMode.ENCRYPT -> encryptInternal(id, text)
                             CompanionMode.DECRYPT -> decryptInternal(text)
                         }
-                        offerRemember(id)
                     }
                     UnlockOutcome.WrongPassphrase -> _state.value = _state.value.copy(
                         busy = false,
@@ -354,6 +381,7 @@ class ToolsViewModel @Inject constructor(
             copied = false,
             notice = null,
             unlockNeeded = false,
+            pendingEraSessionId = null,
         )
     }
 
@@ -408,6 +436,7 @@ class ToolsViewModel @Inject constructor(
                 unlockNeeded = true,
                 pendingContactId = out.contactId,
                 unlockContactName = out.contactName,
+                pendingEraSessionId = null,
             ).also { refreshBiometricOffer() }
             DecryptOutcome.NotAnEnvelope -> _state.value = _state.value.copy(
                 busy = false,
@@ -417,9 +446,15 @@ class ToolsViewModel @Inject constructor(
                 busy = false,
                 notice = UiNoticeOf(R.string.notice_unknown_key),
             )
-            DecryptOutcome.StaleKeyEra -> _state.value = _state.value.copy(
+            is DecryptOutcome.NeedsEraUnlock -> _state.value = _state.value.copy(
                 busy = false,
-                notice = UiNoticeOf(R.string.notice_stale_era),
+                unlockNeeded = true,
+                pendingContactId = out.contactId,
+                unlockContactName = out.contactName,
+                pendingEraSessionId = out.eraSessionId,
+                // A fingerprint wrap is bound to the contact's LATEST era —
+                // it can never serve a superseded-era envelope.
+                biometricOffered = false,
             )
             is DecryptOutcome.Failed -> _state.value = _state.value.copy(
                 busy = false,

@@ -61,8 +61,12 @@ as future work):
           → MessageCipher.decryptEnvelope(text)
               → MessageDecoder.decode              (strict, zero crypto)
               → SessionKeyRepository.eraByKeyId    (contact auto-resolution)
-              → era vs latest era check            (StaleKeyEra guard)
-              → KeySessionManager.activeSession    (NeedsUnlock otherwise)
+              → era vs latest era check            (v0.4.0: latest → active
+                                                  session; superseded →
+                                                  historical session, else
+                                                  NeedsEraUnlock → unlockEra)
+              → KeySessionManager.activeSession / historicalSession
+                                                   (NeedsUnlock / NeedsEraUnlock otherwise)
               → PassphraseCryptoProvider.decrypt   (AEAD auth gate)
           → DecryptedPreview (UI) → [Insert] → commitText
 ```
@@ -75,6 +79,10 @@ passphrase → KeySessionManager.deriveKey   (Argon2id on background dispatcher)
               wrong → WrongPassphrase (derived key wiped, session NOT activated)
            → KeySessionManager.activate     (memory, fixed lifetime)
            → first unlock on device: persist Keystore-wrapped verifier
+
+v0.4.0, superseded eras (unlockEra): same derivation and verifier path,
+           → KeySessionManager.activateHistorical (bounded LRU cache,
+              decrypt-only — never the sending key, never in the active map)
 ```
 
 ## Key lifecycle

@@ -212,19 +212,87 @@ class MessageCipherTest {
     }
 
     @Test
-    fun `stale key era is reported`() = runTest {
+    fun `old key era envelope asks for and unlocks with its era passphrase`() = runTest {
         val (sender, receiver) = pairedDevices()
         val contactId = sender.theSenderContact()
+        val aliceId = receiver.theSenderContact()
+
         val envelope = (sender.cipher.encryptDraft(contactId, "old era message") as EncryptOutcome.Encrypted).envelope
 
-        // Rotate: create a newer era on the RECEIVER side with a strictly
-        // later timestamp so it becomes the latest era there.
+        // The receiver drops its active era-1 session, then rotates: the
+        // latest era is era-2 from here on.
+        receiver.cipher.lockAll()
+        receiver.time.now += 10_000
+        receiver.sessionKeys.createEra(aliceId, TestDevice.FAST_PARAMS)
+
+        // 1) The old envelope asks for ITS era — not the contact's current one.
+        val needs = receiver.cipher.decryptEnvelope(envelope)
+        assertTrue(needs is DecryptOutcome.NeedsEraUnlock)
+        val eraUnlock = needs as DecryptOutcome.NeedsEraUnlock
+        assertEquals("Alice", eraUnlock.contactName)
+
+        // 2) A wrong passphrase is rejected by the era-1 verifier that the
+        //    first unlock persisted on this device.
+        assertTrue(
+            receiver.cipher.unlockEra(aliceId, eraUnlock.eraSessionId, "wrong passphrase here".toCharArray())
+                is UnlockOutcome.WrongPassphrase,
+        )
+
+        // 3) The right passphrase unlocks the era and reads the envelope.
+        assertTrue(
+            receiver.cipher.unlockEra(aliceId, eraUnlock.eraSessionId, passphrase.toCharArray())
+                is UnlockOutcome.Unlocked,
+        )
+        // An old-era unlock never becomes a sending session.
+        assertTrue(!receiver.cipher.isUnlocked(aliceId))
+        val decrypted = receiver.cipher.decryptEnvelope(envelope)
+        assertTrue(decrypted is DecryptOutcome.Decrypted)
+        assertEquals("old era message", (decrypted as DecryptOutcome.Decrypted).plaintext)
+
+        // 4) The cached historical session serves another old-era envelope
+        //    without asking for the passphrase again.
+        val envelopeB = (sender.cipher.encryptDraft(contactId, "second old") as EncryptOutcome.Encrypted).envelope
+        assertTrue(receiver.cipher.decryptEnvelope(envelopeB) is DecryptOutcome.Decrypted)
+    }
+
+    @Test
+    fun `an old era still active serves its own envelopes`() = runTest {
+        val (sender, receiver) = pairedDevices()
+        val contactId = sender.theSenderContact()
+        val envelope = (sender.cipher.encryptDraft(contactId, "era1 msg") as EncryptOutcome.Encrypted).envelope
+
+        // Rotate while era-1 is still the receiver's ACTIVE session.
         val aliceId = receiver.theSenderContact()
         receiver.time.now += 10_000
         receiver.sessionKeys.createEra(aliceId, TestDevice.FAST_PARAMS)
 
+        // era-1 is superseded but still in memory: its own envelope reads
+        // without a new passphrase prompt.
         val outcome = receiver.cipher.decryptEnvelope(envelope)
-        assertTrue(outcome is DecryptOutcome.StaleKeyEra)
+        assertTrue(outcome is DecryptOutcome.Decrypted)
+        assertEquals("era1 msg", (outcome as DecryptOutcome.Decrypted).plaintext)
+    }
+
+    @Test
+    fun `stale active session is not used for a latest-era envelope`() = runTest {
+        val (sender, receiver) = pairedDevices()
+        val aliceId = receiver.theSenderContact()
+
+        // The receiver stays unlocked under era-1 while rotating to era-2.
+        receiver.time.now += 10_000
+        val era2 = receiver.sessionKeys.createEra(aliceId, TestDevice.FAST_PARAMS)
+
+        // A peer holding era-2 sends under it.
+        val peer = TestDevice()
+        val peerContact = peer.contacts.createContact("Peer")
+        peer.sessionKeys.importEra(peerContact.id, InviteCodec.decode(era2.inviteCode))
+        assertTrue(peer.cipher.unlockContact(peerContact.id, passphrase.toCharArray()) is UnlockOutcome.Unlocked)
+        val envelope2 = (peer.cipher.encryptDraft(peerContact.id, "under era2") as EncryptOutcome.Encrypted).envelope
+
+        // The active session belongs to era-1: it must not be tried against
+        // an era-2 envelope (that would guarantee an AEAD failure).
+        val outcome = receiver.cipher.decryptEnvelope(envelope2)
+        assertTrue(outcome is DecryptOutcome.NeedsUnlock)
     }
 
     @Test

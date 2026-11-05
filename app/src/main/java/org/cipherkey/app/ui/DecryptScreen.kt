@@ -108,8 +108,16 @@ fun DecryptScreen(
                     state.unlockContactName ?: "",
                 ),
             ) {
+                // v0.4.0: old-key-era envelopes ask for the passphrase of the
+                // era they were sent under — which may predate the current one.
                 Text(
-                    stringResource(R.string.locked_hint),
+                    stringResource(
+                        if (state.pendingEraSessionId != null) {
+                            R.string.locked_era_hint
+                        } else {
+                            R.string.locked_hint
+                        },
+                    ),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

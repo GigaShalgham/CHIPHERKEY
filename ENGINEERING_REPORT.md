@@ -19,7 +19,7 @@ out, and why.
 | Network / backend code | ✅ none (no INTERNET permission, no HTTP dependency) |
 | On-device smoke test | ⚠️ **not performed** — the build environment has no emulator or device |
 | Public-key mode (B) | ❌ interface only (evaluated and deferred — see §7) |
-| Old-key-era decryption | ❌ v0.1 limitation (envelope → `StaleKeyEra`) |
+| Old-key-era decryption | ❌ v0.1 limitation (envelope → `StaleKeyEra`) — **resolved in v0.4.0**: old-era envelopes now ask for that era's passphrase (`NeedsEraUnlock` → `unlockEra`) and decrypt through a bounded historical-session cache |
 
 ## 2. Toolchain and build configuration
 
@@ -187,7 +187,9 @@ Recorded for transparency:
    receiver (verifier closes it from the second unlock on each device).
 4. **Superseded key eras cannot be decrypted** (envelope → `StaleKeyEra`);
    rotation creates a new era and old envelopes are refused with a clear
-   error.
+   error. *Resolved in v0.4.0:* the passphrase of the old era unlocks it
+   into a bounded historical-session cache that serves decryption only —
+   it can never become the sending key.
 5. **Latin QWERTY + symbols only**; no Persian/other layouts yet (the
    crypto stack is fully UTF-8/Persian-capable — tested).
 6. **Metadata is not protected**: message sizes, timing and transport

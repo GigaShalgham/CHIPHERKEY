@@ -16,7 +16,11 @@ import kotlin.coroutines.CoroutineContext
  *
  * Responsibilities:
  *  - derive keys (Argon2id) off the caller's thread;
- *  - hold at most ONE unlocked session per contact (the latest era);
+ *  - hold at most ONE active session per contact (the latest era), used
+ *    for BOTH directions;
+ *  - hold a bounded LRU cache of HISTORICAL sessions (superseded key
+ *    eras, v0.4.0) used ONLY to decrypt old-era envelopes — never for
+ *    encryption (see [activateHistorical]);
  *  - enforce a fixed lifetime per session (no sliding renewal — the countdown
  *    starts at unlock);
  *  - wipe key material on lock, replacement and expiry;
@@ -35,10 +39,31 @@ class KeySessionManager(
     private val mutex = Mutex()
     private val active = HashMap<ContactId, Entry>()
 
+    // accessOrder = true: iteration starts at the least recently used entry,
+    // which is the one evicted when the bound is exceeded.
+    private val historical = LinkedHashMap<SessionId, HistEntry>(16, 0.75f, true)
+
     private class Entry(
         val sessionKey: SessionKey,
         val expiresAtMillis: Long,
     )
+
+    /** Historical variant: carries its contact so lock(contact) can wipe it. */
+    private class HistEntry(
+        val contactId: ContactId,
+        val sessionKey: SessionKey,
+        val expiresAtMillis: Long,
+    )
+
+    companion object {
+        /**
+         * Upper bound of simultaneously cached historical (old-era)
+         * sessions. Beyond it the least recently used entry is wiped and
+         * evicted — the user simply re-enters the passphrase next time an
+         * old-era envelope arrives.
+         */
+        const val MAX_HISTORICAL_SESSIONS = 8
+    }
 
     /**
      * Derives a 256-bit key from the passphrase and the session's salt.
@@ -106,18 +131,105 @@ class KeySessionManager(
         entry.sessionKey
     }
 
-    /** Locks (wipes) the contact's session. Returns true if one existed. */
-    suspend fun lock(contactId: ContactId): Boolean = mutex.withLock {
-        val entry = active.remove(contactId) ?: return@withLock false
-        wipe(entry.sessionKey)
-        true
+    /**
+     * v0.4.0 (old-key-era decryption): activates a HISTORICAL session — the
+     * key of a superseded key era, re-derived with that era's salt so old
+     * envelopes can still be read.
+     *
+     * Deliberate differences from [activate]:
+     *  - the per-contact ACTIVE session is left untouched (an old-era key
+     *    must never silently become the sending key);
+     *  - several historical sessions may coexist, keyed by session id, up to
+     *    [MAX_HISTORICAL_SESSIONS] — the least recently used entry is wiped
+     *    and evicted beyond that;
+     *  - historical sessions exist ONLY to serve decryption lookups via
+     *    [historicalSession]; nothing in the encrypt path consults them.
+     *
+     * The keyId, salt AND keyBytes buffers are copied, exactly like
+     * [activate] — a SessionKey owns its buffers.
+     */
+    suspend fun activateHistorical(
+        contactId: ContactId,
+        sessionId: SessionId,
+        keyId: ByteArray,
+        salt: ByteArray,
+        params: Argon2Params,
+        keyBytes: ByteArray,
+        timeoutMillis: Long,
+    ): SessionKey = mutex.withLock {
+        historical.remove(sessionId)?.let { wipe(it.sessionKey) }
+        while (historical.size >= MAX_HISTORICAL_SESSIONS) {
+            // accessOrder map: the iterator starts at the least recently
+            // used entry — evict exactly that one.
+            val iterator = historical.entries.iterator()
+            val eldest = iterator.next()
+            iterator.remove()
+            wipe(eldest.value.sessionKey)
+        }
+        val sessionKey = SessionKey(
+            sessionId = sessionId,
+            contactId = contactId,
+            keyId = keyId.copyOf(),
+            salt = salt.copyOf(),
+            params = params,
+            keyBytes = keyBytes.copyOf(),
+        )
+        historical[sessionId] = HistEntry(contactId, sessionKey, timeSource.nowMillis() + timeoutMillis)
+        sessionKey
     }
 
-    /** Locks every session. Returns the number of sessions wiped. */
+    /**
+     * v0.4.0 (old-key-era decryption): the cached historical session of a
+     * superseded era, or null when it was never unlocked here, or it has
+     * expired (expired entries are wiped and removed as a side effect).
+     * Access refreshes the LRU order.
+     */
+    suspend fun historicalSession(sessionId: SessionId): SessionKey? = mutex.withLock {
+        val entry = historical[sessionId] ?: return@withLock null
+        if (entry.expiresAtMillis <= timeSource.nowMillis()) {
+            historical.remove(sessionId)
+            wipe(entry.sessionKey)
+            return@withLock null
+        }
+        entry.sessionKey
+    }
+
+    /**
+     * Locks (wipes) the contact's session. Returns true if one existed.
+     *
+     * v0.4.0: also wipes every HISTORICAL session of the contact — "lock"
+     * means no key material of this contact stays in memory, regardless of
+     * which era it belongs to.
+     */
+    suspend fun lock(contactId: ContactId): Boolean = mutex.withLock {
+        var existed = false
+        active.remove(contactId)?.let {
+            wipe(it.sessionKey)
+            existed = true
+        }
+        val histIterator = historical.entries.iterator()
+        while (histIterator.hasNext()) {
+            val entry = histIterator.next().value
+            if (entry.contactId == contactId) {
+                histIterator.remove()
+                wipe(entry.sessionKey)
+                existed = true
+            }
+        }
+        existed
+    }
+
+    /**
+     * Locks every session (active + historical). Returns the number of
+     * sessions wiped.
+     */
     suspend fun lockAll(): Int = mutex.withLock {
-        val count = active.size
+        var count = active.size
         active.values.forEach { wipe(it.sessionKey) }
         active.clear()
+        count += historical.size
+        historical.values.forEach { wipe(it.sessionKey) }
+        historical.clear()
         count
     }
 
@@ -152,10 +264,21 @@ class KeySessionManager(
 
     private fun sweepExpiredLocked(): Int {
         val now = timeSource.nowMillis()
+        var swept = 0
         val expired = active.filterValues { it.expiresAtMillis <= now }.keys
         expired.forEach { id ->
-            active.remove(id)?.let { wipe(it.sessionKey) }
+            active.remove(id)?.let {
+                wipe(it.sessionKey)
+                swept++
+            }
         }
-        return expired.size
+        val expiredHist = historical.filterValues { it.expiresAtMillis <= now }.keys
+        expiredHist.forEach { id ->
+            historical.remove(id)?.let {
+                wipe(it.sessionKey)
+                swept++
+            }
+        }
+        return swept
     }
 }

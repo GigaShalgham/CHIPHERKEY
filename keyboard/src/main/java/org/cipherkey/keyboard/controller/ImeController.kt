@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.cipherkey.core.common.ContactId
+import org.cipherkey.core.common.SessionId
 import org.cipherkey.core.crypto.CryptoError
 import org.cipherkey.core.sessions.wipe
 import org.cipherkey.data.repository.Contact
@@ -43,6 +44,12 @@ class ImeController(
         val contactId: ContactId,
         val contactName: String,
         val reason: PromptReason,
+        /**
+         * v0.4.0: non-null when the prompt serves a SUPERSEDED key era
+         * (old-era envelope) — submitPassphrase then unlocks THAT era via
+         * [MessageCipher.unlockEra] instead of the contact's current one.
+         */
+        val eraSessionId: SessionId? = null,
     )
 
     data class DecryptedPreview(
@@ -182,7 +189,13 @@ class ImeController(
                         )
                     DecryptOutcome.NotAnEnvelope -> notify("Clipboard has no CK1 message")
                     DecryptOutcome.UnknownKey -> notify("Unknown key — no matching contact here")
-                    DecryptOutcome.StaleKeyEra -> notify("Message uses an older key era (unsupported in v0.1)")
+                    is DecryptOutcome.NeedsEraUnlock ->
+                        _passphrasePrompt.value = PassphrasePrompt(
+                            contactId = outcome.contactId,
+                            contactName = outcome.contactName,
+                            reason = PromptReason.RECEIVE,
+                            eraSessionId = outcome.eraSessionId,
+                        )
                     is DecryptOutcome.Failed -> notify(describe(outcome.error))
                 }
             } finally {
@@ -198,13 +211,26 @@ class ImeController(
             setBusy(true)
             var retry: PromptReason? = null
             try {
-                val outcome = messageCipher.unlockContact(prompt.contactId, passphrase)
+                // v0.4.0: a superseded-era prompt unlocks THAT era — the
+                // current one is never touched by an old-era envelope.
+                val eraId = prompt.eraSessionId
+                val outcome = if (eraId != null) {
+                    messageCipher.unlockEra(prompt.contactId, eraId, passphrase)
+                } else {
+                    messageCipher.unlockContact(prompt.contactId, passphrase)
+                }
                 passphrase.wipe()
                 when (outcome) {
                     UnlockOutcome.Unlocked, UnlockOutcome.AlreadyUnlocked -> {
                         _passphrasePrompt.value = null
                         refreshUnlocked()
-                        notify("Unlocked ${prompt.contactName}")
+                        notify(
+                            if (eraId != null) {
+                                "Older key era unlocked for ${prompt.contactName}"
+                            } else {
+                                "Unlocked ${prompt.contactName}"
+                            },
+                        )
                         retry = prompt.reason
                     }
                     UnlockOutcome.WrongPassphrase -> notify("Wrong passphrase")

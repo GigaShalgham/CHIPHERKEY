@@ -10,6 +10,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -178,6 +179,110 @@ class KeySessionManagerTest {
         val b = manager.deriveKey("shared".toCharArray(), salt(2), fastParams)
         assertArrayEquals(a1, a2)
         assertFalse(a1.contentEquals(b))
+    }
+
+    // ------------------------------------------- historical (v0.4.0)
+
+    private suspend fun unlockHistorical(
+        manager: KeySessionManager,
+        contactId: ContactId,
+        sessionId: SessionId,
+        saltSeed: Int,
+    ): SessionKey {
+        val derived = manager.deriveKey("old-pass".toCharArray(), salt(saltSeed), fastParams)
+        return manager.activateHistorical(
+            contactId = contactId,
+            sessionId = sessionId,
+            keyId = ByteArray(16) { (it + saltSeed).toByte() },
+            salt = salt(saltSeed),
+            params = fastParams,
+            keyBytes = derived,
+            timeoutMillis = 60_000,
+        )
+    }
+
+    @Test
+    fun `historical session is returned by historicalSession`() = runTest {
+        val manager = manager()
+        val sessionKey = unlockHistorical(manager, contactA, SessionId("old-era-1"), 1)
+        assertEquals(sessionKey.sessionId, manager.historicalSession(SessionId("old-era-1"))?.sessionId)
+    }
+
+    @Test
+    fun `historical session is invisible to activeSession lookups`() = runTest {
+        val manager = manager()
+        unlockHistorical(manager, contactA, SessionId("old-era-1"), 1)
+        // An old-era key must never silently act as the contact's session.
+        assertNull(manager.activeSession(contactA))
+        assertEquals(0, manager.unlockedContactIds().size)
+    }
+
+    @Test
+    fun `historical expiry wipes the session`() = runTest {
+        val manager = manager()
+        val sessionKey = unlockHistorical(manager, contactA, SessionId("old-era-1"), 1)
+        time.now += 60_001
+        assertNull(manager.historicalSession(SessionId("old-era-1")))
+        assertTrue(sessionKey.keyBytes.all { it == 0.toByte() })
+    }
+
+    @Test
+    fun `replacing a historical session wipes the previous copy`() = runTest {
+        val manager = manager()
+        val first = unlockHistorical(manager, contactA, SessionId("old-era-1"), 1)
+        unlockHistorical(manager, contactA, SessionId("old-era-1"), 2)
+        assertTrue(first.keyBytes.all { it == 0.toByte() })
+    }
+
+    @Test
+    fun `historical cache is bounded and evicts the least recently used`() = runTest {
+        val manager = manager()
+        val ids = (1..KeySessionManager.MAX_HISTORICAL_SESSIONS).map { SessionId("era-$it") }
+        ids.forEachIndexed { index, id -> unlockHistorical(manager, contactA, id, index + 1) }
+        assertEquals(KeySessionManager.MAX_HISTORICAL_SESSIONS, ids.size)
+
+        // Touch era-1: it becomes the most recently used.
+        assertNotNull(manager.historicalSession(ids.first()))
+        // One beyond the bound: the eldest non-touched entry (era-2) is evicted.
+        val overflow = unlockHistorical(manager, contactA, SessionId("era-overflow"), 99)
+
+        assertNull(manager.historicalSession(ids[1]))                 // era-2 wiped
+        assertEquals(ids.first(), manager.historicalSession(ids.first())?.sessionId) // era-1 kept
+        assertEquals(overflow.sessionId, manager.historicalSession(SessionId("era-overflow"))?.sessionId)
+    }
+
+    @Test
+    fun `lock wipes the contact's historical sessions too`() = runTest {
+        val manager = manager()
+        val historical = unlockHistorical(manager, contactA, SessionId("old-era-1"), 1)
+        val activeB = unlock(manager, contactB, "shared-pass", 2)
+        assertTrue(manager.lock(contactA))
+        assertTrue(historical.keyBytes.all { it == 0.toByte() })
+        assertNull(manager.historicalSession(SessionId("old-era-1")))
+        // Other contacts keep their sessions.
+        assertEquals(activeB.sessionId, manager.activeSession(contactB)?.sessionId)
+    }
+
+    @Test
+    fun `lockAll counts active plus historical sessions`() = runTest {
+        val manager = manager()
+        unlock(manager, contactA, "pass", 1)
+        unlockHistorical(manager, contactB, SessionId("old-b1"), 2)
+        unlockHistorical(manager, contactB, SessionId("old-b2"), 3)
+        assertEquals(3, manager.lockAll())
+        assertNull(manager.historicalSession(SessionId("old-b1")))
+        assertNull(manager.activeSession(contactA))
+    }
+
+    @Test
+    fun `sweepExpired also sweeps historical sessions`() = runTest {
+        val manager = manager()
+        val historical = unlockHistorical(manager, contactA, SessionId("old-era-1"), 1)
+        unlock(manager, contactB, "pass", 2)
+        time.now += 61_000
+        assertEquals(2, manager.sweepExpired())
+        assertTrue(historical.keyBytes.all { it == 0.toByte() })
+        assertNull(manager.historicalSession(SessionId("old-era-1")))
     }
 
     @Test

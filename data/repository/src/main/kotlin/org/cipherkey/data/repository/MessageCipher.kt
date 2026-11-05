@@ -63,8 +63,17 @@ sealed interface DecryptOutcome {
     /** The keyId is unknown on this device. */
     data object UnknownKey : DecryptOutcome
 
-    /** The envelope belongs to an older key era of the contact (v0.1 limitation). */
-    data object StaleKeyEra : DecryptOutcome
+    /**
+     * The envelope belongs to a superseded key era of the contact (v0.4.0:
+     * old-key-era decryption). It becomes readable after that era is
+     * unlocked with [unlockEra] — using the passphrase the era was created
+     * with, which may predate the current one.
+     */
+    data class NeedsEraUnlock(
+        val contactId: ContactId,
+        val eraSessionId: SessionId,
+        val contactName: String,
+    ) : DecryptOutcome
 
     /** Decoding or authentication failure (includes tampered ciphertext). */
     data class Failed(val error: CryptoError) : DecryptOutcome
@@ -130,27 +139,14 @@ class MessageCipher(
             val timeout = sessionTimeout.timeoutMillis()
             val derived = sessions.deriveKey(passphrase, era.salt, era.params)
             try {
-                val wrapped = sessionKeys.wrappedKeyOf(era.sessionId)
-                if (wrapped != null) {
-                    val stored = protector.unwrap(wrapped, era.keyId)
-                    val matched = UnlockVerifier.matches(stored, derived)
-                    val legacy = UnlockVerifier.isLegacy(stored)
-                    stored.fill(0) // the unwrapped verifier never outlives the check
-                    if (!matched) {
-                        derived.fill(0)
-                        return@withContext UnlockOutcome.WrongPassphrase
+                verifyAndPersistVerifier(era, derived)?.let { verdict ->
+                    derived.fill(0)
+                    if (verdict is UnlockOutcome.Failed) {
+                        // Keystore infrastructure failed mid-verify: the
+                        // original path locked the contact here — kept.
+                        sessions.lock(contactId)
                     }
-                    if (legacy) {
-                        // v1 -> v2 migration: replace the full-key verifier
-                        // with the digest form. Best-effort, like the initial
-                        // persist — verification is defence in depth.
-                        runCatching {
-                            sessionKeys.storeWrappedKey(
-                                era.sessionId,
-                                protector.wrap(UnlockVerifier.toStorable(derived), era.keyId),
-                            )
-                        }
-                    }
+                    return@withContext verdict
                 }
                 sessions.activate(
                     contactId = contactId,
@@ -161,18 +157,6 @@ class MessageCipher(
                     keyBytes = derived,
                     timeoutMillis = timeout,
                 )
-                if (wrapped == null) {
-                    // First unlock on this device: persist the device-bound
-                    // digest verifier so future wrong passphrases can be
-                    // rejected at unlock time. Best-effort — verification is
-                    // a defence in depth, not a functional requirement.
-                    runCatching {
-                        sessionKeys.storeWrappedKey(
-                            era.sessionId,
-                            protector.wrap(UnlockVerifier.toStorable(derived), era.keyId),
-                        )
-                    }
-                }
                 // activate() copies the buffer (deep-scan finding 1): the
                 // session owns its key material from here on, so this local
                 // reference can be wiped on every path.
@@ -222,7 +206,15 @@ class MessageCipher(
             }
         }
 
-    /** Decrypts a CK1 envelope, auto-resolving the contact from the envelope's keyId. */
+    /**
+     * Decrypts a CK1 envelope, auto-resolving the contact from the envelope's keyId.
+     *
+     * v0.4.0: envelopes of superseded key eras are readable again. The era is
+     * resolved from the envelope's keyId; when it is not the contact's latest
+     * era, decryption uses that era's HISTORICAL session — and when none is
+     * cached yet, the outcome is [DecryptOutcome.NeedsEraUnlock], which the
+     * UI answers by collecting the passphrase and calling [unlockEra].
+     */
     suspend fun decryptEnvelope(text: String): DecryptOutcome = withContext(dispatchers.io) {
         val trimmed = text.trim()
         if (!Ck1.isEnvelope(trimmed)) return@withContext DecryptOutcome.NotAnEnvelope
@@ -237,21 +229,35 @@ class MessageCipher(
             ?: return@withContext DecryptOutcome.UnknownKey
 
         val latest = sessionKeys.latestEra(era.contactId)
-        if (latest?.sessionId != era.sessionId) {
-            return@withContext DecryptOutcome.StaleKeyEra
-        }
-
-        val session = sessions.activeSession(era.contactId)
         val contactName = contacts.contactName(era.contactId) ?: "unknown"
-        if (session == null) {
-            return@withContext DecryptOutcome.NeedsUnlock(era.contactId, contactName)
+
+        val keyBytes: ByteArray
+        if (latest?.sessionId == era.sessionId) {
+            val session = sessions.activeSession(era.contactId)
+                ?: return@withContext DecryptOutcome.NeedsUnlock(era.contactId, contactName)
+            if (session.sessionId != era.sessionId) {
+                // The active session predates the current era (the contact
+                // rotated while it was unlocked). Its stale key cannot serve
+                // a latest-era envelope — ask for a fresh unlock instead of
+                // guaranteeing an AEAD failure.
+                return@withContext DecryptOutcome.NeedsUnlock(era.contactId, contactName)
+            }
+            keyBytes = session.keyBytes
+        } else {
+            val historical = sessions.historicalSession(era.sessionId)
+                // Rare edge: this superseded era may still be the contact's
+                // ACTIVE session (unlocked before the rotation, never
+                // replaced since) — its key serves its own envelopes.
+                ?: sessions.activeSession(era.contactId)?.takeIf { it.sessionId == era.sessionId }
+                ?: return@withContext DecryptOutcome.NeedsEraUnlock(era.contactId, era.sessionId, contactName)
+            keyBytes = historical.keyBytes
         }
 
         when (val result = provider.decrypt(
             message = message,
             context = DecryptionContext(
                 mode = EncryptionMode.PASSPHRASE,
-                key = session.keyBytes,
+                key = keyBytes,
                 maxSealedBytes = Ck1Limits.MAX_ENVELOPE_BYTES,
             ),
         )) {
@@ -266,6 +272,72 @@ class MessageCipher(
             is DecryptionResult.Failure -> DecryptOutcome.Failed(result.error)
         }
     }
+
+    /**
+     * v0.4.0 (old-key-era decryption): unlocks a SUPERSEDED key era of the
+     * contact with the passphrase that era was created with. The re-derived
+     * key lands in the session manager's bounded HISTORICAL cache — it never
+     * becomes the contact's sending key, so unlocking an old era can never
+     * degrade encryption under the current one.
+     *
+     * Asking for the LATEST era here is not an error: it delegates to
+     * [unlockContact] with identical semantics.
+     *
+     * Verification and error honesty mirror [unlockContact]: the
+     * Keystore-wrapped digest verifier rejects wrong passphrases BEFORE
+     * activation; a [KeyProtectionException] is infrastructure and is
+     * reported as Failed, never as a false "wrong passphrase". Unlike
+     * [unlockContact], a failure here does NOT lock the contact's active
+     * session — the active (latest-era) session was never part of this
+     * attempt.
+     */
+    suspend fun unlockEra(contactId: ContactId, eraSessionId: SessionId, passphrase: CharArray): UnlockOutcome =
+        withContext(dispatchers.io) {
+            KeyPolicy.passphraseProblem(passphrase)?.let { return@withContext UnlockOutcome.Rejected(it) }
+
+            val era = sessionKeys.eraBySessionId(eraSessionId)
+                ?: return@withContext UnlockOutcome.NoSession
+            if (era.contactId != contactId) {
+                return@withContext UnlockOutcome.Failed("era does not belong to this contact")
+            }
+            val latest = sessionKeys.latestEra(contactId)
+            if (latest?.sessionId == eraSessionId) {
+                // Not actually superseded — same path as a normal unlock.
+                return@withContext unlockContact(contactId, passphrase)
+            }
+
+            if (sessions.historicalSession(eraSessionId) != null) {
+                return@withContext UnlockOutcome.AlreadyUnlocked
+            }
+
+            val timeout = sessionTimeout.timeoutMillis()
+            val derived = sessions.deriveKey(passphrase, era.salt, era.params)
+            try {
+                verifyAndPersistVerifier(era, derived)?.let { verdict ->
+                    derived.fill(0)
+                    return@withContext verdict
+                }
+                sessions.activateHistorical(
+                    contactId = contactId,
+                    sessionId = era.sessionId,
+                    keyId = era.keyId,
+                    salt = era.salt,
+                    params = era.params,
+                    keyBytes = derived,
+                    timeoutMillis = timeout,
+                )
+                // activateHistorical() copies the buffer, like activate():
+                // the historical session owns its key material from here on.
+                derived.fill(0)
+                UnlockOutcome.Unlocked
+            } catch (e: KeyProtectionException) {
+                derived.fill(0)
+                UnlockOutcome.Failed("Keystore error — ${e.message ?: "key protection failed"}")
+            } catch (e: Exception) {
+                derived.fill(0)
+                UnlockOutcome.Failed(e.message ?: "era unlock failed")
+            }
+        }
 
     suspend fun lockContact(contactId: ContactId): Boolean = sessions.lock(contactId)
 
@@ -337,4 +409,60 @@ class MessageCipher(
                 keyBytes.fill(0)
             }
         }
+
+    /**
+     * The shared verifier step of [unlockContact] and [unlockEra] (extracted
+     * in v0.4.0 so the two paths cannot drift):
+     *
+     *  - wrapped verifier present: unwrap it (device-bound), compare against
+     *    [derived] — mismatch → [UnlockOutcome.WrongPassphrase]. A v1
+     *    full-key verifier is transparently rewritten to the v2 digest form
+     *    (best-effort, like the initial persist).
+     *  - no verifier yet (first unlock of this era on this device): persist
+     *    the digest verifier best-effort so future wrong passphrases can be
+     *    rejected at unlock time. Verification is defence in depth, not a
+     *    functional requirement.
+     *  - a [KeyProtectionException] from the unwrap is INFRASTRUCTURE failure
+     *    (the passphrase plays no part in the unwrap): reported as
+     *    [UnlockOutcome.Failed], never as a false "wrong passphrase"
+     *    (deep-scan finding 2).
+     *
+     * Returns null when verification passed. The caller owns [derived] and
+     * wipes it on every path.
+     */
+    private suspend fun verifyAndPersistVerifier(era: ContactSession, derived: ByteArray): UnlockOutcome? {
+        val wrapped = sessionKeys.wrappedKeyOf(era.sessionId)
+        if (wrapped == null) {
+            runCatching {
+                sessionKeys.storeWrappedKey(
+                    era.sessionId,
+                    protector.wrap(UnlockVerifier.toStorable(derived), era.keyId),
+                )
+            }
+            return null
+        }
+        return try {
+            val stored = protector.unwrap(wrapped, era.keyId)
+            val matched = UnlockVerifier.matches(stored, derived)
+            val legacy = UnlockVerifier.isLegacy(stored)
+            stored.fill(0) // the unwrapped verifier never outlives the check
+            if (!matched) {
+                UnlockOutcome.WrongPassphrase
+            } else {
+                if (legacy) {
+                    // v1 -> v2 migration: replace the full-key verifier with
+                    // the digest form. Best-effort, like the initial persist.
+                    runCatching {
+                        sessionKeys.storeWrappedKey(
+                            era.sessionId,
+                            protector.wrap(UnlockVerifier.toStorable(derived), era.keyId),
+                        )
+                    }
+                }
+                null
+            }
+        } catch (e: KeyProtectionException) {
+            UnlockOutcome.Failed("Keystore error — ${e.message ?: "key protection failed"}")
+        }
+    }
 }

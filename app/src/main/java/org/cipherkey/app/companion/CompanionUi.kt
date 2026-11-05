@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.cipherkey.app.R
+import org.cipherkey.app.ui.PassphraseStrengthHint
 import org.cipherkey.app.security.rememberBiometricPromptHelper
 import org.cipherkey.app.security.BiometricPromptHost
 import org.cipherkey.core.common.ContactId
@@ -308,7 +309,15 @@ private fun UnlockCard(
             fontWeight = FontWeight.Medium,
         )
         Text(
-            stringResource(R.string.locked_hint),
+            // v0.4.0: old-key-era envelopes ask for the passphrase of the era
+            // they were sent under — which may predate the current one.
+            stringResource(
+                if (state.pendingEraSessionId != null) {
+                    R.string.locked_era_hint
+                } else {
+                    R.string.locked_hint
+                },
+            ),
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -350,6 +359,8 @@ private fun PassphraseField(
             ),
             modifier = Modifier.fillMaxWidth(),
         )
+        // v0.4.0: live strength hint while the user types.
+        PassphraseStrengthHint(passphrase)
         Button(
             onClick = {
                 // Convert to CharArray for the crypto path (which wipes it)

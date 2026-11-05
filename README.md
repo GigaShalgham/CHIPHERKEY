@@ -35,9 +35,10 @@ When an app's selection toolbar is unavailable, the Home screen offers an
 | Contact / key-era management (Room) | ✅ implemented |
 | Android Keystore key wrapping (verifier is a digest, never the raw key) | ✅ implemented (needs on-device verification) |
 | Session manager (timeout, isolation, wipe, periodic sweep) | ✅ implemented, unit-tested |
+| Old-key-era message decryption | ✅ v0.4.0 — superseded eras unlock with `unlockEra` into a bounded historical-session cache (decrypt-only, never the sending key); the envelope's era is resolved from its keyId |
+| Passphrase advisor | ✅ v0.4.0 — live strength meter under every passphrase field + recommended-passphrase generator in the new-contact dialog (7 words + 2 digits, 69 bits guaranteed) |
 | On-device smoke test (real phone) | ⚠️ maintainer device gate in progress (see `specs/004…/DEVICE_TEST.md`) |
 | Mode B: public-key (Signal et al.) | ❌ interface only — evaluated and deferred, see docs/PLUGINS.md |
-| Old-key-era message decryption | ❌ v0.2 limitation (documented) |
 | Built-in keyboard (IME) | ❌ removed from the APK in v0.2 — the `:keyboard` module stays in-repo, compiled and tested as a dormant library |
 | v0.3.0-alpha (floating assistant, fingerprint unlock, in-app tools) | ✅ re-implemented on `main` (spec 005, recovered from the signed release APK; see CHANGELOG) |
 

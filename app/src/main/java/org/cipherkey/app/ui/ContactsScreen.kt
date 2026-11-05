@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -47,6 +48,7 @@ import org.cipherkey.core.sessions.wipe
 import org.cipherkey.data.repository.Contact
 import org.cipherkey.data.repository.UnlockOutcome
 import org.cipherkey.security.policies.Argon2Profile
+import org.cipherkey.security.policies.PassphraseAdvisor
 
 @Composable
 fun ContactsScreen(viewModel: ContactsViewModel) {
@@ -123,6 +125,7 @@ fun ContactsScreen(viewModel: ContactsViewModel) {
                     if (ok) showAddDialog = false
                 }
             },
+            onCopyPassphrase = { text -> viewModel.copyText(text) },
         )
     }
 
@@ -183,6 +186,7 @@ private fun ContactCard(
 private fun AddContactDialog(
     onDismiss: () -> Unit,
     onCreate: (String, String?, Argon2Profile, (Boolean) -> Unit) -> Unit,
+    onCopyPassphrase: (String) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
     var invite by remember { mutableStateOf("") }
@@ -229,6 +233,12 @@ private fun AddContactDialog(
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.error,
                     )
+                }
+                if (invite.isBlank()) {
+                    // v0.4.0: a blank invite means a brand-new key — the
+                    // shared passphrase is agreed out of band, so the app
+                    // can only RECOMMEND one.
+                    RecommendedPassphrase(onCopy = onCopyPassphrase)
                 }
                 Text("Argon2id strength", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 Argon2Profile.entries.forEach { candidate ->
@@ -411,4 +421,42 @@ private fun ContactDetailDialog(
             TextButton(onClick = onDismiss) { Text("Close") }
         },
     )
+}
+
+/**
+ * v0.4.0: a recommended shared passphrase for a brand-new key era. The app
+ * never stores it — the two users read it across a table or a call, then
+ * both type it at unlock time. Regenerate until it feels memorable.
+ */
+@Composable
+private fun RecommendedPassphrase(onCopy: (String) -> Unit) {
+    var suggestion by remember { mutableStateOf(PassphraseAdvisor.recommend()) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Recommended passphrase", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text(
+            suggestion,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 14.sp,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            "≈ ${PassphraseAdvisor.GUARANTEED_BITS} bits guaranteed — generated on this device.",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { suggestion = PassphraseAdvisor.recommend() }) {
+                Text("New suggestion")
+            }
+            TextButton(onClick = { onCopy(suggestion) }) {
+                Text("Copy")
+            }
+        }
+        Text(
+            "Share it with your contact IN PERSON — never in the same message as the " +
+                "invite code. The app does not store it; you will both type it at unlock time.",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }

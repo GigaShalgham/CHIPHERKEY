@@ -14,6 +14,7 @@ import org.cipherkey.app.R
 import org.cipherkey.app.security.BiometricKeyStore
 import org.cipherkey.app.security.BiometricPromptRequest
 import org.cipherkey.core.common.ContactId
+import org.cipherkey.core.common.SessionId
 import org.cipherkey.core.sessions.wipe
 import org.cipherkey.data.preferences.SettingsRepository
 import org.cipherkey.data.repository.Contact
@@ -58,6 +59,12 @@ data class CompanionUiState(
     /** Contact resolved from a decrypt outcome (name display + unlock). */
     val pendingContactId: ContactId? = null,
     val pendingContactName: String? = null,
+    /**
+     * v0.4.0: non-null while the pending passphrase unlock serves a
+     * SUPERSEDED key era (old-era envelope). Biometric offers stay off —
+     * a fingerprint wrap is bound to the contact's latest era only.
+     */
+    val pendingEraSessionId: SessionId? = null,
     /** Final output: envelope (encrypt) or plaintext (decrypt). */
     val resultText: String? = null,
     val resultContactName: String? = null,
@@ -204,7 +211,12 @@ class CompanionViewModel @Inject constructor(
         unlockThen(id, passphrase) { encryptNow() }
     }
 
-    /** Unlock the contact resolved from a decrypt NeedsUnlock outcome. */
+    /** Unlock the contact resolved from a decrypt NeedsUnlock outcome.
+     *
+     * v0.4.0: when the envelope belongs to a superseded era, the unlock
+     * goes through [MessageCipher.unlockEra] — the contact is NOT marked
+     * unlocked for sending and no fingerprint remember offer is made.
+     */
     fun unlockAndDecrypt(passphrase: CharArray) {
         val id = _state.value.pendingContactId ?: run {
             passphrase.wipe(); return
@@ -212,7 +224,12 @@ class CompanionViewModel @Inject constructor(
         val envelope = _state.value.incoming ?: run {
             passphrase.wipe(); return
         }
-        unlockThen(id, passphrase) { decryptInternal(envelope) }
+        val eraSessionId = _state.value.pendingEraSessionId
+        if (eraSessionId != null) {
+            unlockEraThen(id, eraSessionId, passphrase) { decryptInternal(envelope) }
+        } else {
+            unlockThen(id, passphrase) { decryptInternal(envelope) }
+        }
     }
 
     /** Copy the current result to the clipboard (explicit user action). */
@@ -502,11 +519,13 @@ class CompanionViewModel @Inject constructor(
                 resultContactName = out.contactName,
                 busy = false,
                 copied = false,
+                pendingEraSessionId = null,
             )
             is DecryptOutcome.NeedsUnlock -> _state.value = _state.value.copy(
                 phase = CompanionUiState.Phase.NeedsUnlock,
                 pendingContactId = out.contactId,
                 pendingContactName = out.contactName,
+                pendingEraSessionId = null,
                 busy = false,
             ).also { refreshBiometricOffer() }
             DecryptOutcome.NotAnEnvelope -> _state.value = _state.value.copy(
@@ -519,10 +538,15 @@ class CompanionViewModel @Inject constructor(
                 busy = false,
                 notice = UiNotice(R.string.notice_unknown_key),
             )
-            DecryptOutcome.StaleKeyEra -> _state.value = _state.value.copy(
-                phase = CompanionUiState.Phase.Notice,
+            is DecryptOutcome.NeedsEraUnlock -> _state.value = _state.value.copy(
+                phase = CompanionUiState.Phase.NeedsUnlock,
+                pendingContactId = out.contactId,
+                pendingContactName = out.contactName,
+                pendingEraSessionId = out.eraSessionId,
                 busy = false,
-                notice = UiNotice(R.string.notice_stale_era),
+                // A fingerprint wrap is bound to the contact's LATEST era —
+                // it can never serve a superseded-era envelope.
+                biometricOffered = false,
             )
             is DecryptOutcome.Failed -> _state.value = _state.value.copy(
                 phase = CompanionUiState.Phase.Notice,
@@ -574,6 +598,53 @@ class CompanionViewModel @Inject constructor(
                 // The passphrase is wiped on EVERY path — including a thrown
                 // exception (deep-scan finding 12: an unexpected error used
                 // to crash the process and leak the buffer).
+                passphrase.wipe()
+            }
+        }
+    }
+
+    /**
+     * v0.4.0 (old-key-era decryption): unlock a SUPERSEDED era and continue.
+     * Mirrors [unlockThen] with two deliberate omissions — the contact is
+     * NOT added to the unlocked set (an old-era key must never become the
+     * sending key) and no fingerprint remember offer is made (biometric
+     * wraps are bound to the latest era only).
+     */
+    private fun unlockEraThen(
+        contactId: ContactId,
+        eraSessionId: SessionId,
+        passphrase: CharArray,
+        andThen: suspend () -> Unit,
+    ) {
+        launchSafely {
+            try {
+                _state.value = _state.value.copy(busy = true, notice = null)
+                when (val outcome = messageCipher.unlockEra(contactId, eraSessionId, passphrase)) {
+                    UnlockOutcome.Unlocked, UnlockOutcome.AlreadyUnlocked -> {
+                        _state.value = _state.value.copy(
+                            pendingEraSessionId = null,
+                        )
+                        andThen()
+                    }
+                    UnlockOutcome.WrongPassphrase -> _state.value = _state.value.copy(
+                        busy = false,
+                        notice = UiNotice(R.string.notice_wrong_passphrase),
+                    )
+                    UnlockOutcome.NoSession -> _state.value = _state.value.copy(
+                        busy = false,
+                        notice = UiNotice(R.string.notice_no_era),
+                    )
+                    is UnlockOutcome.Rejected -> _state.value = _state.value.copy(
+                        busy = false,
+                        notice = UiNotice(R.string.notice_passphrase_rejected, outcome.reason),
+                    )
+                    is UnlockOutcome.Failed -> _state.value = _state.value.copy(
+                        busy = false,
+                        notice = UiNotice(R.string.notice_unlock_failed, outcome.reason),
+                    )
+                }
+            } finally {
+                // Like unlockThen: wiped on EVERY path, exceptions included.
                 passphrase.wipe()
             }
         }

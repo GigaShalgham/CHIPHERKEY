@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.cipherkey.app.R
 import org.cipherkey.app.companion.UiNotice
+import org.cipherkey.security.policies.PassphraseAdvisor
 
 /**
  * Shared building blocks for the v0.3.0 screens — one visual language for
@@ -169,6 +170,8 @@ fun PassphraseInput(
             ),
             modifier = Modifier.fillMaxWidth(),
         )
+        // v0.4.0: live strength hint while the user types.
+        PassphraseStrengthHint(passphrase)
         Button(
             onClick = {
                 onSubmit(passphrase.toCharArray())
@@ -178,6 +181,35 @@ fun PassphraseInput(
             modifier = Modifier.fillMaxWidth(),
         ) { Text(buttonLabel) }
     }
+}
+
+/**
+ * v0.4.0: live strength estimate under a passphrase field. Display only —
+ * it never blocks submission (that stays with KeyPolicy on the crypto path);
+ * it teaches what a strong shared passphrase looks like while typing.
+ */
+@Composable
+fun PassphraseStrengthHint(passphrase: String) {
+    if (passphrase.isEmpty()) return
+    val strength = remember(passphrase) { PassphraseAdvisor.strength(passphrase) }
+    val bits = remember(passphrase) { PassphraseAdvisor.estimateBits(passphrase) }
+    val (labelRes, color) = when (strength) {
+        PassphraseAdvisor.Strength.WEAK ->
+            R.string.passphrase_strength_weak to MaterialTheme.colorScheme.error
+        PassphraseAdvisor.Strength.FAIR ->
+            R.string.passphrase_strength_fair to MaterialTheme.colorScheme.tertiary
+        PassphraseAdvisor.Strength.STRONG ->
+            R.string.passphrase_strength_strong to MaterialTheme.colorScheme.primary
+    }
+    Text(
+        text = stringResourceCompat(
+            R.string.passphrase_strength_summary,
+            stringResourceCompat(labelRes),
+            bits,
+        ),
+        fontSize = 12.sp,
+        color = color,
+    )
 }
 
 /** Screen title + subtitle header. */
@@ -234,5 +266,5 @@ fun BusyLine(visible: Boolean) {
 
 /** stringResource indirection so the private helpers above stay short. */
 @Composable
-private fun stringResourceCompat(res: Int): String =
-    androidx.compose.ui.res.stringResource(res)
+private fun stringResourceCompat(res: Int, vararg args: Any): String =
+    androidx.compose.ui.res.stringResource(res, *args)

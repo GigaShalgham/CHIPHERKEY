@@ -107,6 +107,14 @@ class SessionKeyRepository(
         sessionKeyDao.byKeyId(keyId)?.toDomain()
     }
 
+    /**
+     * v0.4.0 (old-key-era decryption): an era looked up by session id — the
+     * inverse of the eraId the UI carried through a NeedsEraUnlock outcome.
+     */
+    suspend fun eraBySessionId(sessionId: SessionId): ContactSession? = withContext(dispatchers.io) {
+        sessionKeyDao.bySessionId(sessionId.value)?.toDomain()
+    }
+
     suspend fun erasForContact(contactId: ContactId): List<ContactSession> =
         withContext(dispatchers.io) {
             sessionKeyDao.observeByContact(contactId.value).first().map { it.toDomain() }
