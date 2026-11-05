@@ -5,10 +5,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * v0.4.1: pins the honest biometric gate mapping. The BiometricManager
- * constants are inlined at compile time, so these tests run without any
- * framework — and pin the raw values too, so a library bump that renumbers
- * them cannot silently change the UX.
+ * v0.4.1: pins the honest biometric gate mapping. The mapping is symbolic
+ * (it switches on the BiometricManager constants), so a library renumbering
+ * cannot change its meaning — a raw-value pin was tried and dropped: CI
+ * showed androidx.biometric 1.1.0 ships these in the 10+ range
+ * (NONE_ENROLLED = 11), not the 1–4 the platform javadocs suggest.
  */
 class BiometricDiagnosticsTest {
 
@@ -29,16 +30,5 @@ class BiometricDiagnosticsTest {
         assertEquals(BiometricGate.NOT_STRONG, BiometricDiagnostics.gateFor(-1))
         assertEquals(BiometricGate.NOT_STRONG, BiometricDiagnostics.gateFor(7))
         assertEquals(BiometricGate.NOT_STRONG, BiometricDiagnostics.gateFor(Int.MAX_VALUE))
-    }
-
-    @Test
-    fun `the raw constant values are the framework ones`() {
-        // If androidx renumbers these, the mapping above silently changes
-        // meaning — pin the values the framework has shipped since 1.0.
-        assertEquals(0, BiometricManager.BIOMETRIC_SUCCESS)
-        assertEquals(1, BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED)
-        assertEquals(2, BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE)
-        assertEquals(3, BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE)
-        assertEquals(4, BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED)
     }
 }

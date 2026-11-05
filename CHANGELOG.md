@@ -32,7 +32,8 @@ Four pieces of on-device feedback against v0.4.0-alpha, all addressed.
   enrolled" for every failure. It now maps the raw `canAuthenticate` result
   to an honest reason (nothing enrolled / no sensor / sensor busy /
   pending security update / not Strong-class) — `BiometricDiagnostics`,
-  pinned by unit tests including the raw constant values.
+  pinned by unit tests (symbolic mapping, so a library renumbering cannot
+  change the meaning).
 - **Fingerprint affordance missing where users look for it**: "Use
   fingerprint" now also appears in the contact detail dialog (the natural
   place), with in-dialog notices for cancel/stale outcomes; the
@@ -61,7 +62,7 @@ Four pieces of on-device feedback against v0.4.0-alpha, all addressed.
 
 ### Verified
 
-- New `BiometricDiagnosticsTest` (gate mapping + raw constant pinning);
+- New `BiometricDiagnosticsTest` (symbolic gate mapping + fallback);
   everything else compile- and CI-gated as usual.
 
 ## [0.4.0-alpha] - 2026-11-06 — old-key-era decryption + passphrase advisor
