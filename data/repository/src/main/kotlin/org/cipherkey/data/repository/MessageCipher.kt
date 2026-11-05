@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.cipherkey.core.common.ContactId
 import org.cipherkey.core.common.DispatcherProvider
+import org.cipherkey.core.common.SessionId
 import org.cipherkey.core.crypto.CryptoError
 import org.cipherkey.core.crypto.CryptoProvider
 import org.cipherkey.core.crypto.DecryptionContext
@@ -274,4 +275,66 @@ class MessageCipher(
 
     suspend fun activeSessionFingerprint(contactId: ContactId): String? =
         sessions.activeSession(contactId)?.fingerprint
+
+    /**
+     * v0.3.0 (biometric unlock): the session id of the contact's LATEST key
+     * era, or null when the contact has no era yet. Combined with the
+     * contact id it forms the biometric "contact key"
+     * (`"$contactId:$eraId"`) used as wrap AAD — when the era rotates, the
+     * AAD changes, the wrapped key no longer unwraps, and the stale wrap is
+     * discarded instead of unlocking the wrong era.
+     */
+    suspend fun currentEraId(contactId: ContactId): SessionId? =
+        sessionKeys.latestEra(contactId)?.sessionId
+
+    /**
+     * v0.3.0 (biometric unlock): returns a COPY of the active session's raw
+     * key bytes so the caller can wrap them into the fingerprint-gated
+     * BiometricKeyStore, or null when the contact is locked. The copy is
+     * deliberately explicit — the session keeps owning its own buffer.
+     */
+    suspend fun exportSessionKey(contactId: ContactId): ByteArray? {
+        val session = sessions.activeSession(contactId) ?: return null
+        val keyBytes = session.keyBytes ?: return null
+        return keyBytes.copyOf()
+    }
+
+    /**
+     * v0.3.0 (biometric unlock): activates the current era with key material
+     * that was remembered behind a fingerprint wrap. The bytes were derived
+     * and verified when the user first unlocked with the passphrase — no
+     * re-derivation and no passphrase verification happen here; the GCM
+     * authentication of the wrap (AAD = "contactId:eraId") is what binds the
+     * bytes to THIS era. The caller's buffer is wiped on every path.
+     */
+    suspend fun unlockContactWithKey(contactId: ContactId, keyBytes: ByteArray): UnlockOutcome =
+        withContext(dispatchers.io) {
+            try {
+                val era = sessionKeys.latestEra(contactId)
+                if (era == null) {
+                    keyBytes.fill(0)
+                    return@withContext UnlockOutcome.NoSession
+                }
+                if (sessions.activeSession(contactId)?.sessionId == era.sessionId) {
+                    keyBytes.fill(0)
+                    return@withContext UnlockOutcome.AlreadyUnlocked
+                }
+                val timeout = sessionTimeout.timeoutMillis()
+                sessions.activate(
+                    contactId = contactId,
+                    sessionId = era.sessionId,
+                    keyId = era.keyId,
+                    salt = era.salt,
+                    params = era.params,
+                    keyBytes = keyBytes,
+                    timeoutMillis = timeout,
+                )
+                UnlockOutcome.Unlocked
+            } catch (e: Exception) {
+                sessions.lock(contactId)
+                UnlockOutcome.Failed(e.message ?: "unlock failed")
+            } finally {
+                keyBytes.fill(0)
+            }
+        }
 }

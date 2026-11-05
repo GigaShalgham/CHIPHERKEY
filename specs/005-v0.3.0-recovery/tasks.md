@@ -22,27 +22,27 @@
 > Reference: `recovered/v0.3.0-alpha/sources/org/cipherkey/` on the recovery
 > branch. Re-write in Kotlin; do not copy decompiled Java into the build.
 
-- [ ] T010 Port `app/assistant/`: `FloatingAssistantService` (foreground
+- [x] T010 Port `app/assistant/`: `FloatingAssistantService` (foreground
        service, overlay bubble, drag handling, clipboard quick actions) +
        `AssistantReadiness`, with Hilt injection.
-- [ ] T011 Port `app/security/`: `BiometricKeyStore` interface +
+- [x] T011 Port `app/security/`: `BiometricKeyStore` interface +
        `AndroidBiometricKeyStore` (Keystore-bound wrap/unwrap ciphers) +
        `BiometricPromptHelper` + `BiometricPromptHost` Compose host +
        `BiometricPromptRequest`; era-change invalidation.
-- [ ] T012 Port `security/policies/`: `KeyPolicy`, `Argon2Profile`.
-- [ ] T013 Port `security/clipboard/` additions: `ClipboardParser`,
+- [x] T012 Port `security/policies/`: `KeyPolicy`, `Argon2Profile`.
+- [x] T013 Port `security/clipboard/` additions: `ClipboardParser`,
        `ClipSnapshot`, `ClipboardRead`, `ClipboardModule` (merge with
        existing clipboard code on `main` where it overlaps).
-- [ ] T014 Port Tools screen: `ToolsViewModel`, `ToolsUiState`,
+- [x] T014 Port Tools screen: `ToolsViewModel`, `ToolsUiState`,
        manual encrypt/decrypt UI (strings `tools_*`).
-- [ ] T015 Port Settings additions: `SettingsViewModel` events,
+- [x] T015 Port Settings additions: `SettingsViewModel` events,
        assistant toggle (+ overlay-permission guidance), fingerprint toggle
        (+ "no fingerprints enrolled" state), KDF-strength picker, timeout
        picker.
-- [ ] T016 Manifest: add `SYSTEM_ALERT_WINDOW`, `FOREGROUND_SERVICE`,
+- [x] T016 Manifest: add `SYSTEM_ALERT_WINDOW`, `FOREGROUND_SERVICE`,
        `FOREGROUND_SERVICE_SPECIAL_USE`, `POST_NOTIFICATIONS`; register the
        assistant service with its notification channel.
-- [ ] T017 Strings: port all v0.3.0 user-facing strings
+- [x] T017 Strings: port all v0.3.0 user-facing strings
        (`assistant_*`, `biometric_*`, `notice_biometric_*`, `tools_*`,
        `settings_*` additions).
 
@@ -56,7 +56,7 @@
        codebase already does for Keystore).
 - [ ] T022 CI: extend the Android CI workflow if new lint/test tasks are
        needed; keep the build green.
-- [ ] T023 Version bump: `versionCode 5`, `versionName "0.3.0-alpha"`;
+- [x] T023 Version bump: `versionCode 5`, `versionName "0.3.0-alpha"`;
        update README status table and CHANGELOG.
 - [ ] T024 Tag `v0.3.0-alpha` on `main`; GitHub release with release notes
        referencing this spec.

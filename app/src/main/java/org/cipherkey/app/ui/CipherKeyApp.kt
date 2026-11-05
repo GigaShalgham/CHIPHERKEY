@@ -1,6 +1,7 @@
 package org.cipherkey.app.ui
 
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -9,34 +10,41 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import org.cipherkey.app.ContactsViewModel
+import org.cipherkey.app.LocalBiometrics
 import org.cipherkey.app.MainViewModel
 import org.cipherkey.app.R
 import org.cipherkey.app.SettingsViewModel
+import org.cipherkey.app.ToolsViewModel
+import org.cipherkey.app.companion.DestinationRoute
+import org.cipherkey.app.security.BiometricKeyStore
 
-private data class Destination(val route: String, val labelRes: Int, val glyph: String)
-
-private val destinations = listOf(
-    Destination("home", R.string.nav_dashboard, "🛡"),
-    Destination("contacts", R.string.nav_contacts, "👥"),
-    Destination("settings", R.string.nav_settings, "⚙"),
-)
+/**
+ * Five-tab main navigation (v0.3.0): Home, Encrypt, Decrypt, Contacts,
+ * Settings. The Encrypt and Decrypt tabs host the in-app tools (manual
+ * input); everything else stays where it was.
+ */
+private data class Destination(val route: String, val labelRes: Int, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
 @Composable
-fun CipherKeyApp(
-    mainViewModel: MainViewModel,
-    contactsViewModel: ContactsViewModel,
-    settingsViewModel: SettingsViewModel,
-) {
+fun CipherKeyApp() {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
+
+    val destinations = listOf(
+        Destination(DestinationRoute.HOME, R.string.nav_home, CipherKeyIcons.Home),
+        Destination(DestinationRoute.ENCRYPT, R.string.nav_encrypt, CipherKeyIcons.Lock),
+        Destination(DestinationRoute.DECRYPT, R.string.nav_decrypt, CipherKeyIcons.LockOpen),
+        Destination(DestinationRoute.CONTACTS, R.string.nav_contacts, CipherKeyIcons.People),
+        Destination(DestinationRoute.SETTINGS, R.string.nav_settings, CipherKeyIcons.Settings),
+    )
 
     Scaffold(
         bottomBar = {
@@ -53,7 +61,7 @@ fun CipherKeyApp(
                                 restoreState = true
                             }
                         },
-                        icon = { Text(destination.glyph, fontSize = 18.sp) },
+                        icon = { Icon(destination.icon, contentDescription = null) },
                         label = { Text(stringResource(destination.labelRes), fontSize = 12.sp) },
                     )
                 }
@@ -62,12 +70,42 @@ fun CipherKeyApp(
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = "home",
+            startDestination = DestinationRoute.HOME,
             modifier = Modifier.padding(padding),
         ) {
-            composable("home") { HomeScreen(mainViewModel) }
-            composable("contacts") { ContactsScreen(contactsViewModel) }
-            composable("settings") { SettingsScreen(settingsViewModel, contactsViewModel) }
+            composable(DestinationRoute.HOME) {
+                HomeScreen(
+                    viewModel = hiltViewModel<MainViewModel>(),
+                    onNavigate = { route ->
+                        navController.navigate(route) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                )
+            }
+            composable(DestinationRoute.ENCRYPT) {
+                EncryptScreen(
+                    viewModel = hiltViewModel<ToolsViewModel>(),
+                    biometrics = LocalBiometrics.current,
+                )
+            }
+            composable(DestinationRoute.DECRYPT) {
+                DecryptScreen(
+                    viewModel = hiltViewModel<ToolsViewModel>(),
+                    biometrics = LocalBiometrics.current,
+                )
+            }
+            composable(DestinationRoute.CONTACTS) {
+                ContactsScreen(viewModel = hiltViewModel<ContactsViewModel>())
+            }
+            composable(DestinationRoute.SETTINGS) {
+                SettingsScreen(
+                    viewModel = hiltViewModel<SettingsViewModel>(),
+                    contactsViewModel = hiltViewModel<ContactsViewModel>(),
+                )
+            }
         }
     }
 }

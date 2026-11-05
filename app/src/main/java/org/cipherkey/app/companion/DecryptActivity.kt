@@ -2,6 +2,7 @@ package org.cipherkey.app.companion
 
 import android.content.Intent
 import dagger.hilt.android.AndroidEntryPoint
+import org.cipherkey.app.R
 import org.cipherkey.app.companion.ProcessTextContract.SelectedText
 
 /**
@@ -38,10 +39,10 @@ class DecryptActivity : BaseCompanionActivity() {
                     readOnly = readOnly,
                 )
             SelectedText.Empty -> showNotice(
-                "No text was selected. Select the whole \"CK1:…\" message and try again.",
+                UiNotice(R.string.notice_no_selection_decrypt),
             )
             is SelectedText.Oversized -> showNotice(
-                "The selected text is longer than ${parsed.limitBytes / 1024} KiB and is not a valid CK1 envelope.",
+                UiNotice(R.string.notice_oversized_decrypt, "${parsed.limitBytes / 1024}"),
             )
         }
     }

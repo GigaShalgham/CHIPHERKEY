@@ -1,28 +1,75 @@
 package org.cipherkey.app
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.cipherkey.data.preferences.AppSettings
 import org.cipherkey.data.preferences.SettingsRepository
+import org.cipherkey.data.repository.MessageCipher
 import org.cipherkey.security.policies.Argon2Profile
+
+/**
+ * One-shot UI events raised by Settings interactions (v0.3.0) — consumed
+ * by the screen so navigation/side effects survive recomposition.
+ */
+sealed interface SettingsEvent {
+    /** Open the system "Display over other apps" screen for CipherKey. */
+    data object RequestOverlayPermission : SettingsEvent
+}
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
+    private val biometrics: org.cipherkey.app.security.BiometricKeyStore,
+    private val messageCipher: MessageCipher,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context,
 ) : ViewModel() {
 
-    val settings: kotlinx.coroutines.flow.StateFlow<AppSettings> =
+    val settings: StateFlow<AppSettings> =
         settingsRepository.settings
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
 
-    fun setSessionTimeoutMinutes(minutes: Int) {
+    /** True when this device has enrolled biometrics (drives the row state). */
+    private val _biometricAvailable = MutableStateFlow(false)
+    val biometricAvailable = _biometricAvailable.asStateFlow()
+
+    /** True while the overlay permission is granted (re-checked on resume). */
+    private val _overlayGranted = MutableStateFlow(false)
+    val overlayGranted = _overlayGranted.asStateFlow()
+
+    private val _events = MutableSharedFlow<SettingsEvent>(extraBufferCapacity = 1)
+    val events = _events.asSharedFlow()
+
+    init {
+        refresh()
+    }
+
+    /** Re-reads the hardware/permission state (called on every resume). */
+    fun refresh() {
         viewModelScope.launch {
-            settingsRepository.setSessionTimeoutMillis(minutes * 60_000L)
+            _biometricAvailable.value = biometrics.isDeviceCapable()
+            _overlayGranted.value = android.provider.Settings.canDrawOverlays(context)
+        }
+    }
+
+    fun setSessionTimeoutMinutes(minutes: Int) {
+        setSessionTimeoutMillis(minutes * 60_000L)
+    }
+
+    fun setSessionTimeoutMillis(millis: Long) {
+        viewModelScope.launch {
+            settingsRepository.setSessionTimeoutMillis(millis)
         }
     }
 
@@ -30,6 +77,56 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.setArgon2Profile(profile)
         }
+    }
+
+    /**
+     * v0.3.0: fingerprint unlock toggle. Turning it OFF wipes every
+     * remembered wrap and the Keystore wrap key — "off" must mean the
+     * data is gone, not merely hidden.
+     */
+    fun setBiometricEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            if (enabled && !biometrics.isDeviceCapable()) {
+                // Nothing enrolled: refuse silently — the row renders the
+                // "No fingerprint enrolled on this device" caption instead.
+                return@launch
+            }
+            if (!enabled) {
+                biometrics.clearAll()
+            }
+            settingsRepository.setBiometricUnlockEnabled(enabled)
+        }
+    }
+
+    /**
+     * v0.3.0: floating assistant toggle. Also starts/stops the service so
+     * the change is immediately visible, not just after the next launch.
+     */
+    fun setAssistantEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setAssistantEnabled(enabled)
+            val action = org.cipherkey.app.assistant.AssistantReadiness
+                .actionFor(enabled, android.provider.Settings.canDrawOverlays(context))
+            when (action) {
+                org.cipherkey.app.assistant.AssistantReadiness.Action.StartService ->
+                    org.cipherkey.app.assistant.FloatingAssistantService.start(context)
+                org.cipherkey.app.assistant.AssistantReadiness.Action.StopService ->
+                    org.cipherkey.app.assistant.FloatingAssistantService.stop(context)
+                org.cipherkey.app.assistant.AssistantReadiness.Action.None ->
+                    _events.emit(SettingsEvent.RequestOverlayPermission)
+            }
+        }
+    }
+
+    /** Locks every unlocked session right now (panic affordance). */
+    fun lockAllNow() {
+        viewModelScope.launch {
+            messageCipher.lockAll()
+        }
+    }
+
+    fun consumeEvent() {
+        // SharedFlow consumes implicitly; kept for call-site symmetry.
     }
 
     fun markOnboardingComplete() {

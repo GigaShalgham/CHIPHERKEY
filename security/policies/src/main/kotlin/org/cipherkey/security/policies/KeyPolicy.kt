@@ -20,12 +20,42 @@ object KeyPolicy {
     /** Shortest user-selectable session timeout. */
     const val MIN_SESSION_TIMEOUT_MILLIS: Long = 60_000L
 
-    /** Longest user-selectable session timeout. */
-    const val MAX_SESSION_TIMEOUT_MILLIS: Long = 60 * 60_000L
+    /**
+     * Longest user-selectable session timeout.
+     *
+     * v0.3.0: extended from 1 h to 24 h — the timeout picker offers a full
+     * day so the floating-assistant quick actions stay usable on a phone
+     * that is unlocked in the morning, while still auto-wiping daily.
+     */
+    const val MAX_SESSION_TIMEOUT_MILLIS: Long = 24 * 60 * 60_000L
+
+    /**
+     * The timeout choices offered in Settings, ascending. Values must stay
+     * inside [MIN_SESSION_TIMEOUT_MILLIS]..[MAX_SESSION_TIMEOUT_MILLIS].
+     */
+    val TIMEOUT_CHOICES_MILLIS: List<Long> = listOf(
+        60_000L,          // 1 min
+        300_000L,         // 5 min
+        900_000L,         // 15 min (default)
+        3_600_000L,       // 1 h
+        14_400_000L,      // 4 h
+        43_200_000L,      // 12 h
+        86_400_000L,      // 24 h
+    )
 
     /** Clamps a requested timeout into the accepted range. */
     fun clampSessionTimeout(requestedMillis: Long): Long =
         requestedMillis.coerceIn(MIN_SESSION_TIMEOUT_MILLIS, MAX_SESSION_TIMEOUT_MILLIS)
+
+    /**
+     * The picker choice closest to [millis] (after clamping), so a persisted
+     * value that is not an exact choice — e.g. a 1 h cap carried over from
+     * v0.2 settings — still renders as a selected row instead of nothing.
+     */
+    fun nearestTimeoutChoice(millis: Long): Long {
+        val clamped = clampSessionTimeout(millis)
+        return TIMEOUT_CHOICES_MILLIS.minBy { kotlin.math.abs(it - clamped) }
+    }
 
     /**
      * Returns a human-readable problem with the passphrase, or null when the

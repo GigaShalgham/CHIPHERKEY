@@ -2,15 +2,165 @@
 <resources>
     <string name="app_name">CipherKey</string>
     <string name="tagline">Private encryption for any messenger — no servers, no accounts</string>
-    <string name="nav_onboarding">Onboarding</string>
-    <string name="nav_dashboard">Home</string>
+
+    <!-- Main navigation (v0.3.0 five-tab layout) -->
+    <string name="nav_home">Home</string>
+    <string name="nav_encrypt">Encrypt</string>
+    <string name="nav_decrypt">Decrypt</string>
     <string name="nav_contacts">Contacts</string>
-    <string name="nav_settings">Security settings</string>
-    <string name="nav_about">About</string>
+    <string name="nav_settings">Settings</string>
 
     <!-- Companion entry labels (user-visible in selection toolbar / sharesheet).
          Keep short: OEMs truncate long labels. -->
     <string name="process_text_encrypt_label">Encrypt (CipherKey)</string>
     <string name="process_text_decrypt_label">Decrypt (CipherKey)</string>
     <string name="share_decrypt_label">Decrypt with CipherKey</string>
+
+    <!-- Companion sheet -->
+    <string name="sheet_encrypt">Encrypt</string>
+    <string name="sheet_decrypt">Decrypt</string>
+    <string name="sheet_from_selection">From text selection</string>
+    <string name="sheet_from_share">From share</string>
+    <string name="sheet_from_clipboard">From clipboard</string>
+    <string name="sheet_from_manual">Manual input</string>
+    <string name="reading_clipboard">Reading the clipboard…</string>
+    <string name="decrypting">Decrypting…</string>
+    <string name="draft_label">Draft</string>
+    <string name="passphrase_label">Shared passphrase</string>
+    <string name="passphrase_for">Passphrase for %1$s</string>
+    <string name="message_from">Message from %1$s</string>
+    <string name="locked_hint">This session is locked. Enter the shared passphrase — or use your fingerprint.</string>
+    <string name="unlock_encrypt_action">Unlock &amp; Encrypt</string>
+    <string name="unlock_decrypt_action">Unlock &amp; Decrypt</string>
+    <string name="use_fingerprint">Use fingerprint</string>
+    <string name="session_unlocked_hint">Session unlocked — one tap.</string>
+    <string name="result_encrypted_for">Encrypted for %1$s</string>
+    <string name="result_decrypted_from">Decrypted — from %1$s</string>
+    <string name="envelope_truncated_hint">The full envelope is returned to the field — this preview is truncated.</string>
+    <string name="replace_in_field">Replace in field</string>
+    <string name="try_again">Try again</string>
+    <string name="close">Close</string>
+
+    <!-- Generic actions -->
+    <string name="action_copy">Copy</string>
+    <string name="action_done">Done</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_paste">Paste</string>
+    <string name="action_share">Share</string>
+
+    <!-- Biometric prompt (system dialog copy) -->
+    <string name="biometric_prompt_title_unlock">Unlock CipherKey</string>
+    <string name="biometric_prompt_title_remember">Remember this key</string>
+    <string name="biometric_prompt_subtitle">Touch the fingerprint sensor</string>
+    <string name="biometric_prompt_negative">Not now</string>
+
+    <!-- Floating assistant -->
+    <string name="assistant_channel_name">Floating assistant</string>
+    <string name="assistant_encrypt">Encrypt</string>
+    <string name="assistant_decrypt">Decrypt</string>
+    <string name="assistant_notification_title">CipherKey assistant active</string>
+    <string name="assistant_notification_text">Tap the bubble to encrypt or decrypt the clipboard.</string>
+
+    <!-- Home (v0.3.0) -->
+    <string name="home_status_title">Status</string>
+    <string name="home_status_contacts">Contacts: %1$d</string>
+    <string name="home_status_unlocked">Unlocked: %1$d</string>
+    <string name="home_status_locked">All sessions locked</string>
+    <string name="home_quick_title">Quick actions</string>
+    <string name="home_quick_encrypt_text">Encrypt text</string>
+    <string name="home_quick_decrypt_text">Decrypt text</string>
+    <string name="home_quick_encrypt_clip">Encrypt clipboard</string>
+    <string name="home_quick_decrypt_clip">Decrypt clipboard</string>
+    <string name="home_how_title">How it works</string>
+    <string name="home_how_step1">1. Agree on a passphrase in person, then exchange the invite code (CKS1:…) once.</string>
+    <string name="home_how_step2">2. Sending: select the text you typed and tap \"Encrypt (CipherKey)\" in the selection toolbar — or use the Encrypt tab.</string>
+    <string name="home_how_step3">3. Receiving: select the CK1:… message and tap \"Decrypt (CipherKey)\", or share it to CipherKey.</string>
+    <string name="home_how_step4">4. If an app hides the toolbar entries, use the clipboard buttons, the in-app Encrypt/Decrypt tabs, or the floating assistant.</string>
+    <string name="home_security_title">Security</string>
+    <string name="home_security_b1">• Zero Android permissions, no network code.</string>
+    <string name="home_security_b2">• AES-256-GCM with Argon2id key derivation (RFC 9106).</string>
+    <string name="home_security_b3">• Keys live in memory only and are wiped on lock or timeout.</string>
+    <string name="home_security_b4">• Optional fingerprint unlock uses hardware-backed Keystore keys.</string>
+    <string name="home_security_b5">• No servers — nothing ever leaves this device.</string>
+
+    <!-- In-app tools screens (v0.3.0) -->
+    <string name="encrypt_title">Encrypt</string>
+    <string name="encrypt_subtitle">Type or paste a message, pick a contact, encrypt.</string>
+    <string name="encrypt_action">Encrypt</string>
+    <string name="encrypt_contact_label">Encrypt for</string>
+    <string name="decrypt_title">Decrypt</string>
+    <string name="decrypt_subtitle">Paste a CK1:… message and read its original text.</string>
+    <string name="decrypt_action">Decrypt</string>
+    <string name="decrypt_input_label">Encrypted message</string>
+    <string name="decrypt_input_hint">Paste the CK1:… message here…</string>
+    <string name="decrypt_ck1_detected">CK1 message detected</string>
+    <string name="tools_input_label">Message</string>
+    <string name="tools_input_hint">Type or paste the text here…</string>
+
+    <!-- Contact picker -->
+    <string name="contact_choose">Choose contact</string>
+    <string name="contact_locked">🔒</string>
+    <string name="contact_unlocked">🔓</string>
+
+    <!-- Contacts -->
+    <string name="contacts_title">Contacts</string>
+    <string name="contacts_add">Add contact</string>
+    <string name="contacts_empty_title">No contacts yet</string>
+    <string name="contacts_empty_body">Create a contact, agree on a passphrase in person, and exchange the invite code once.</string>
+
+    <!-- Settings (v0.3.0) -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_unlock_section">Unlock &amp; security</string>
+    <string name="settings_timeout_title">Stay unlocked for</string>
+    <string name="settings_timeout_summary">Unlocked keys are held in memory for this long and then wiped. You can always lock immediately.</string>
+    <string name="option_minutes">%1$d min</string>
+    <string name="option_hours">%1$d h</string>
+    <string name="lock_now">Lock all sessions now</string>
+    <string name="settings_biometric_title">Fingerprint unlock</string>
+    <string name="settings_biometric_summary">Remember each unlocked key, protected by the fingerprint sensor and the Android Keystore. The passphrase always remains available.</string>
+    <string name="settings_biometric_unavailable">No fingerprint enrolled on this device</string>
+    <string name="settings_assistant_title">Floating assistant</string>
+    <string name="settings_assistant_summary">A small draggable button over other apps with quick Encrypt / Decrypt clipboard actions.</string>
+    <string name="settings_assistant_needs_overlay">The \"Display over other apps\" permission is required — it is granted in Android settings, not at runtime.</string>
+    <string name="settings_assistant_open_settings">Open permission</string>
+    <string name="settings_kdf_title">Key derivation strength (new contacts)</string>
+    <string name="settings_kdf_summary">Applies to key eras created from now on. Stronger settings make brute-force attacks proportionally more expensive and unlock slightly slower.</string>
+    <string name="kdf_profile_desc">%1$d MiB · %2$d passes</string>
+    <string name="settings_about_title">About</string>
+    <string name="settings_about_version">CipherKey %1$s — local-first encryption companion.</string>
+    <string name="settings_about_line2">CK1 protocol v1 · AES-256-GCM · Argon2id (RFC 9106) · Apache-2.0 license.</string>
+    <string name="settings_about_line3">Public-key mode (CK1 mode 0x02) is specified but not yet integrated.</string>
+    <string name="state_on">On</string>
+    <string name="state_off">Off</string>
+
+    <!-- Notices -->
+    <string name="notice_copied">Copied to clipboard ✓</string>
+    <string name="notice_biometric_failed">Fingerprint unlock did not complete — use the passphrase.</string>
+    <string name="notice_biometric_stale">The remembered fingerprint key is out of date (the contact\'s key era changed). Unlock with the passphrase instead.</string>
+    <string name="notice_clipboard_access_failed">Could not access the clipboard.</string>
+    <string name="notice_clipboard_blank">The clipboard text is empty (blank). Copy the text, then tap Try again.</string>
+    <string name="notice_clipboard_blocked">Android blocked clipboard access (%1$s). Tap Try again while CipherKey is in the foreground.</string>
+    <string name="notice_clipboard_empty">The clipboard is empty. Copy the text first, then tap Try again.</string>
+    <string name="notice_clipboard_nontext">The clipboard contains non-text content (%1$s). CipherKey can only process text — copy text, then tap Try again.</string>
+    <string name="notice_decrypt_failed">Decryption failed — the message is corrupted or was tampered with.</string>
+    <string name="notice_empty_input">Type or paste a message first.</string>
+    <string name="notice_encrypt_failed">Encryption failed: %1$s</string>
+    <string name="notice_input_too_long">The text is longer than %1$s KiB and cannot be processed as one message.</string>
+    <string name="notice_no_contact_selected">Choose a contact first.</string>
+    <string name="notice_no_contacts">No contacts yet. Open CipherKey and create a contact with a shared passphrase first.</string>
+    <string name="notice_no_era">This contact has no key era yet. Open the app, open the contact, and create or import a key first.</string>
+    <string name="notice_no_selection_encrypt">No text was selected. Select the draft text and try again.</string>
+    <string name="notice_no_selection_decrypt">No text was selected. Select the whole \"CK1:…\" message and try again.</string>
+    <string name="notice_not_envelope">This text is not a CK1 encrypted message. Select the whole \"CK1:…\" message and try again.</string>
+    <string name="notice_nothing_shared">Nothing was shared. Share the \"CK1:…\" message text with CipherKey.</string>
+    <string name="notice_nothing_to_encrypt">Nothing to encrypt.</string>
+    <string name="notice_oversized_encrypt">The selected text is longer than %1$s KiB and cannot be encrypted as one message.</string>
+    <string name="notice_oversized_decrypt">The selected text is longer than %1$s KiB and is not a valid CK1 envelope.</string>
+    <string name="notice_oversized_shared">The shared text is longer than %1$s KiB and is not a valid CK1 envelope.</string>
+    <string name="notice_passphrase_rejected">Passphrase rejected: %1$s</string>
+    <string name="notice_stale_era">This message was encrypted under an older key era that this version cannot decrypt.</string>
+    <string name="notice_unknown_key">The key for this message is not on this device. Import the contact\'s invite code first.</string>
+    <string name="notice_unlock_failed">Unlock failed: %1$s</string>
+    <string name="notice_wrong_passphrase">Wrong passphrase.</string>
+    <string name="notice_unexpected_error">Unexpected error: %1$s</string>
 </resources>

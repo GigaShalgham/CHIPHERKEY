@@ -31,8 +31,8 @@ android {
         applicationId = "org.cipherkey"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.2.2"
+        versionCode = 5
+        versionName = "0.3.0-alpha"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -122,6 +122,10 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
+    // v0.3.0: system fingerprint prompt + its FragmentActivity host.
+    implementation(libs.androidx.biometric)
+    implementation(libs.androidx.fragment.ktx)
+    implementation(libs.androidx.hilt.navigation.compose)
 
     val composeBom = platform(libs.compose.bom)
     implementation(composeBom)

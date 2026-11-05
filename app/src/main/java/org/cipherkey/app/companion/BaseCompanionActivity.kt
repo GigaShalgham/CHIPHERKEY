@@ -4,21 +4,24 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import org.cipherkey.app.companion.CompanionUiState.Phase
+import org.cipherkey.app.security.BiometricKeyStore
 import org.cipherkey.app.ui.theme.CipherKeyTheme
+import javax.inject.Inject
 
 /**
- * Extra used by CipherKey's own Home screen to route a clipboard fallback
- * through the same processing activities (spec 003, User Story 3). When
- * present, the activity reads its text from the clipboard (explicit,
- * user-initiated launch, via the ClipboardAccess chokepoint) instead of the
- * PROCESS_TEXT extra, and hides the "Replace in field" affordance.
+ * Extra used by CipherKey's own Home screen (and the floating assistant,
+ * v0.3.0) to route a clipboard fallback through the same processing
+ * activities (spec 003, User Story 3). When present, the activity reads its
+ * text from the clipboard (explicit, user-initiated launch, via the
+ * ClipboardAccess chokepoint) instead of the PROCESS_TEXT extra, and hides
+ * the "Replace in field" affordance.
  */
 const val EXTRA_FROM_CLIPBOARD = "org.cipherkey.app.extra.FROM_CLIPBOARD"
 
@@ -36,10 +39,18 @@ const val EXTRA_FROM_CLIPBOARD = "org.cipherkey.app.extra.FROM_CLIPBOARD"
  * the false "clipboard is empty" notice on the Galaxy A54. Clipboard
  * launches are therefore deferred until [onWindowFocusChanged] reports that
  * this activity's window actually gained focus.
+ *
+ * v0.3.0: the base extends [FragmentActivity] (still a ComponentActivity)
+ * because the system BiometricPrompt requires a FragmentActivity host —
+ * the fingerprint unlock and remember flows run here too.
  */
-abstract class BaseCompanionActivity : ComponentActivity() {
+abstract class BaseCompanionActivity : FragmentActivity() {
 
     protected val viewModel: CompanionViewModel by viewModels()
+
+    /** v0.3.0: fingerprint-gated key store, injected for the prompt flows. */
+    @Inject
+    lateinit var biometrics: BiometricKeyStore
 
     /** The workflow this entry point hosts — drives notice headers (finding 4). */
     protected abstract val companionMode: CompanionMode
@@ -87,6 +98,11 @@ abstract class BaseCompanionActivity : ComponentActivity() {
                     } else {
                         null
                     },
+                    biometrics = biometrics,
+                    onRequestBiometricUnlock = viewModel::requestBiometricUnlock,
+                    onBiometricUnlock = viewModel::onBiometricUnlockResult,
+                    onConsumeRememberKey = viewModel::consumeRememberKey,
+                    onRememberDone = viewModel::onRememberDone,
                 )
             }
         }
@@ -136,7 +152,7 @@ abstract class BaseCompanionActivity : ComponentActivity() {
     }
 
     /** Graceful dead-end notice for unusable input (FR-004). */
-    protected fun showNotice(notice: String, retryable: Boolean = false) {
+    protected fun showNotice(notice: UiNotice, retryable: Boolean = false) {
         viewModel.showNotice(companionMode, notice, retryable)
     }
 }

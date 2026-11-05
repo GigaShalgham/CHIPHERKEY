@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-alpha] - 2026-11-05 — the lost release, re-implemented
+
+> The original v0.3.0-alpha source was never committed (see spec 005 and
+> `recovered/v0.3.0-alpha-from-apk`). This release re-implements everything
+> the shipped APK contained, in Kotlin, on top of v0.2.2-alpha.
+
+### Added
+
+- **Floating assistant** (opt-in, off by default): a draggable overlay
+  bubble with quick Encrypt / Decrypt-clipboard actions, hosted by a
+  specialUse foreground service. Needs the "Display over other apps"
+  permission, which Settings deep-links to; "Close" on the panel persists
+  the toggle off. Adds `SYSTEM_ALERT_WINDOW`, `FOREGROUND_SERVICE`,
+  `FOREGROUND_SERVICE_SPECIAL_USE` and `POST_NOTIFICATIONS` permissions —
+  with the feature off, none is requested and no service runs.
+- **Fingerprint unlock** (opt-in, off by default): after a passphrase
+  unlock the user may remember the session key behind the system
+  BiometricPrompt. The key is wrapped with an AES-256-GCM cipher whose key
+  lives in the Android Keystore with `setUserAuthenticationRequired(true)`;
+  the wrap AAD is `"contactId:eraId"`, so a rotated key era invalidates the
+  remembered wrap automatically (stale wraps are discarded, never used for
+  the wrong era). Turning the feature off wipes every blob AND the Keystore
+  wrap key. The passphrase path always remains available.
+- **In-app Encrypt / Decrypt tabs**: manual encryption and decryption of
+  typed or pasted text (contact picker, CK1 detection, unlock cards, result
+  block with Copy) — for apps where neither the selection toolbar nor the
+  sharesheet reaches the text. The main navigation is now five tabs:
+  Home, Encrypt, Decrypt, Contacts, Settings.
+- **Settings expansion**: timeout picker with 1 min → 24 h choices
+  (`KeyPolicy.MAX_SESSION_TIMEOUT_MILLIS` extended accordingly,
+  `nearestTimeoutChoice()` added), fingerprint-unlock toggle,
+  floating-assistant toggle, and the existing KDF-strength picker.
+- **Typed notices**: companion notices are now `(string resource, arg)`
+  pairs (`UiNotice`) resolved at render time — locale-correct after
+  configuration changes and assertable in unit tests.
+- **`MessageCipher` biometric surface**: `currentEraId()`,
+  `exportSessionKey()` (returns a copy) and `unlockContactWithKey()` (the
+  caller's buffer is wiped on every path).
+
+### Changed
+
+- `BaseCompanionActivity` and `MainActivity` extend `FragmentActivity`
+  (required by the system BiometricPrompt; still a `ComponentActivity`).
+- The "Replace in field" affordance now also appears for
+  decrypt-from-selection (insertable for both directions).
+- Home screen rebuilt around quick actions, status chips, how-it-works and
+  the security-properties card, all string-resource driven.
+
+### Security
+
+- No new network code; the app remains local-first with zero network
+  access. Both new features are opt-in and permission-gated; every crypto
+  path still funnels through the audited `MessageCipher` facade.
+- The assistant service holds no key material and performs no crypto — it
+  only launches the existing companion activities.
+
+### Verified
+
+- 90 unit tests, 0 failures (logic; device gate for the new UI remains, as
+  before, a maintainer task — see spec 005 task list).
+- `assembleDebug` and `assembleRelease` (unsigned) build cleanly.
+
 ## [0.2.2-alpha] - 2026-11-05 — remediation of the 2026-11-05 deep-scan findings
 
 Every code finding from `docs/DEEP-SCAN-2026-11-05.md` is addressed below

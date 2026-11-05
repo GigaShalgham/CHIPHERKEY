@@ -28,6 +28,10 @@ data class AppSettings(
     val sessionTimeoutMillis: Long = KeyPolicy.DEFAULT_SESSION_TIMEOUT_MILLIS,
     val argon2Profile: Argon2Profile = Argon2Profile.DEFAULT,
     val onboardingCompleted: Boolean = false,
+    /** v0.3.0: remember unlocked keys behind a fingerprint-gated wrap. */
+    val biometricUnlockEnabled: Boolean = false,
+    /** v0.3.0: floating assistant overlay (opt-in, off by default). */
+    val assistantEnabled: Boolean = false,
 )
 
 class SettingsRepository(
@@ -36,12 +40,16 @@ class SettingsRepository(
 
     val settings: Flow<AppSettings> = dataStore.data.map { prefs ->
         AppSettings(
-            sessionTimeoutMillis = KeyPolicy.clampSessionTimeout(
+            // nearestTimeoutChoice: a persisted value that is not one of the
+            // picker choices (e.g. v0.2's 1 h cap) still maps to a row.
+            sessionTimeoutMillis = KeyPolicy.nearestTimeoutChoice(
                 prefs[KEY_SESSION_TIMEOUT] ?: KeyPolicy.DEFAULT_SESSION_TIMEOUT_MILLIS,
             ),
             argon2Profile = Argon2Profile.fromName(prefs[KEY_ARGON2_PROFILE])
                 ?: Argon2Profile.DEFAULT,
             onboardingCompleted = prefs[KEY_ONBOARDING_COMPLETED] ?: false,
+            biometricUnlockEnabled = prefs[KEY_BIOMETRIC_UNLOCK] ?: false,
+            assistantEnabled = prefs[KEY_ASSISTANT_ENABLED] ?: false,
         )
     }
 
@@ -60,6 +68,20 @@ class SettingsRepository(
     suspend fun setOnboardingCompleted() {
         dataStore.edit { prefs ->
             prefs[KEY_ONBOARDING_COMPLETED] = true
+        }
+    }
+
+    /** v0.3.0: toggles fingerprint-gated key wrapping (see app/security). */
+    suspend fun setBiometricUnlockEnabled(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[KEY_BIOMETRIC_UNLOCK] = enabled
+        }
+    }
+
+    /** v0.3.0: toggles the floating assistant service. */
+    suspend fun setAssistantEnabled(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[KEY_ASSISTANT_ENABLED] = enabled
         }
     }
 
@@ -91,6 +113,8 @@ class SettingsRepository(
         private val KEY_ARGON2_PROFILE = stringPreferencesKey("argon2_profile")
         private val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         private val KEY_LAST_CONTACT_ID = stringPreferencesKey("last_contact_id")
+        private val KEY_BIOMETRIC_UNLOCK = booleanPreferencesKey("biometric_unlock_enabled")
+        private val KEY_ASSISTANT_ENABLED = booleanPreferencesKey("assistant_enabled")
 
         /** Factory for the process-wide DataStore instance. */
         fun defaultDataStore(context: Context): DataStore<Preferences> = context.cipherKeyDataStore
