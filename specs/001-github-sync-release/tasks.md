@@ -76,7 +76,13 @@ principle V applies to release claims).
       (GitHub PAT tokens, private-key blocks, keystores, keystore
       properties) — clean
 - [x] T027 Merge `001-github-sync-release` into `main`
-- [ ] T028 Update local `download/` deliverables (fresh APK copy,
+- [x] T028 Update local `download/` deliverables (fresh APK copy,
       refreshed source archive, real README)
-- [ ] T029 Write the final session report (what changed, test evidence,
+      (done: release APK, debug APK, source zip, and README with
+      SHA-256 checksums verified present; README extended after spec 002
+      to cover the architecture report PDF)
+- [x] T029 Write the final session report (what changed, test evidence,
       commit hash, release link, remaining work)
+      (done: `CipherKey-Session-Report-2026-11-04.pdf` delivered to
+      `download/`, covering specs 001 + 002 and the PAT-restoration
+      continuation)
