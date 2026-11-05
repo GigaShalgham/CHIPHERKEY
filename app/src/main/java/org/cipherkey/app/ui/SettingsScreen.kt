@@ -26,6 +26,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.collectLatest
 import org.cipherkey.app.BuildConfig
@@ -51,7 +53,12 @@ fun SettingsScreen(
     val overlayGranted by viewModel.overlayGranted.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    LaunchedEffect(Unit) { viewModel.refresh() }
+    // Deep-scan F2: refresh on every resume — returning from the system
+    // overlay-permission screen with the toggle on must start the service.
+    LifecycleResumeEffect(Unit) {
+        viewModel.refresh()
+        onPauseOrDispose { }
+    }
 
     // One-shot events: open the overlay-permission screen when the
     // assistant was enabled but the permission is missing.

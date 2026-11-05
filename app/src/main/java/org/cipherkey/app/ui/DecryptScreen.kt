@@ -48,20 +48,14 @@ fun DecryptScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val promptHelper = rememberBiometricPromptHelper(biometrics)
     var input by remember { mutableStateOf("") }
-    var rememberKey by remember { mutableStateOf<ByteArray?>(null) }
 
     LaunchedEffect(Unit) { viewModel.refresh() }
-    LaunchedEffect(state.biometricPrompt) {
-        rememberKey = if (state.biometricPrompt is BiometricPromptRequest.Remember) {
-            viewModel.consumeRememberKey()
-        } else {
-            null
-        }
-    }
+    // The Remember prompt's key export is awaited INSIDE the host's effect
+    // (deep-scan F1) — never pre-loaded into composition state.
     BiometricPromptHost(
         helper = promptHelper,
         request = state.biometricPrompt,
-        pendingKey = rememberKey,
+        loadRememberKey = viewModel::consumeRememberKey,
         onUnlock = viewModel::onBiometricUnlockResult,
         onRememberDone = viewModel::onRememberDone,
     )

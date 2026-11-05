@@ -22,9 +22,13 @@ fun rememberBiometricPromptHelper(store: BiometricKeyStore): BiometricPromptHelp
  * system fingerprint prompt exactly once:
  *  - [BiometricPromptRequest.Unlock] unwraps the remembered key and returns
  *    the raw bytes (or null on cancel/stale) via [onUnlock];
- *  - [BiometricPromptRequest.Remember] wraps [pendingKey] — the session key
- *    exported right after a passphrase unlock — and reports whether the wrap
- *    persisted via [onRememberDone]. The helper wipes the buffer itself.
+ *  - [BiometricPromptRequest.Remember] loads the session key with the
+ *    SUSPEND loader [loadRememberKey] (deep-scan F1: the key export is an
+ *    async DB call — the loader must be awaited INSIDE this effect, never
+ *    pre-loaded into composition state, or the prompt would race an
+ *    always-null buffer and fail instantly), wraps it and reports whether
+ *    the wrap persisted via [onRememberDone]. The helper wipes the buffer
+ *    itself on every path.
  *
  * ViewModels own the request state; this host exists because BiometricPrompt
  * is an imperative Android API that needs an Activity, not because any state
@@ -34,7 +38,7 @@ fun rememberBiometricPromptHelper(store: BiometricKeyStore): BiometricPromptHelp
 fun BiometricPromptHost(
     helper: BiometricPromptHelper?,
     request: BiometricPromptRequest?,
-    pendingKey: ByteArray?,
+    loadRememberKey: (suspend () -> ByteArray?)?,
     onUnlock: (ByteArray?) -> Unit,
     onRememberDone: (Boolean) -> Unit,
 ) {
@@ -45,7 +49,7 @@ fun BiometricPromptHost(
             is BiometricPromptRequest.Unlock ->
                 prompt.unlockKey(current.contactKey) { keyBytes -> onUnlock(keyBytes) }
             is BiometricPromptRequest.Remember -> {
-                val plain = pendingKey
+                val plain = loadRememberKey?.invoke()
                 if (plain == null) {
                     onRememberDone(false)
                 } else {

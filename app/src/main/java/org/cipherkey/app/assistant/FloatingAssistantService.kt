@@ -81,13 +81,8 @@ class FloatingAssistantService : Service() {
         }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
-        return START_STICKY
-    }
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int =
+        START_STICKY
 
     override fun onDestroy() {
         root?.let { overlay ->
@@ -316,9 +311,6 @@ class FloatingAssistantService : Service() {
         private const val CHANNEL_ID = "assistant"
         private const val NOTIFICATION_ID = 1042
         private const val DRAG_SLOP = 10f
-
-        /** Sent by Settings' "stop" path so the toggle stays responsive. */
-        const val ACTION_STOP = "org.cipherkey.app.assistant.STOP"
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, FloatingAssistantService::class.java))

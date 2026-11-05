@@ -67,25 +67,17 @@ fun CompanionSheet(
     biometrics: org.cipherkey.app.security.BiometricKeyStore? = null,
     onRequestBiometricUnlock: () -> Unit = {},
     onBiometricUnlock: (ByteArray?) -> Unit = {},
-    onConsumeRememberKey: (suspend () -> ByteArray?)? = null,
+    loadRememberKey: (suspend () -> ByteArray?)? = null,
     onRememberDone: (Boolean) -> Unit = {},
 ) {
     val promptHelper = biometrics?.let { rememberBiometricPromptHelper(it) }
-    var rememberKey by remember { mutableStateOf<ByteArray?>(null) }
 
-    // The Remember prompt needs the exported session key: load it once when
-    // the request appears, keep it until the prompt reports done.
-    LaunchedEffect(state.biometricPrompt) {
-        rememberKey = if (state.biometricPrompt is org.cipherkey.app.security.BiometricPromptRequest.Remember) {
-            onConsumeRememberKey?.invoke()
-        } else {
-            null
-        }
-    }
+    // The Remember prompt's key export is awaited INSIDE the host's effect
+    // (deep-scan F1) — never pre-loaded into composition state.
     BiometricPromptHost(
         helper = promptHelper,
         request = state.biometricPrompt,
-        pendingKey = rememberKey,
+        loadRememberKey = loadRememberKey,
         onUnlock = onBiometricUnlock,
         onRememberDone = onRememberDone,
     )

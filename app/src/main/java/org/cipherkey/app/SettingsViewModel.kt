@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -17,6 +18,8 @@ import kotlinx.coroutines.launch
 import org.cipherkey.data.preferences.AppSettings
 import org.cipherkey.data.preferences.SettingsRepository
 import org.cipherkey.data.repository.MessageCipher
+import org.cipherkey.app.assistant.AssistantReadiness
+import org.cipherkey.app.assistant.FloatingAssistantService
 import org.cipherkey.security.policies.Argon2Profile
 
 /**
@@ -55,11 +58,24 @@ class SettingsViewModel @Inject constructor(
         refresh()
     }
 
-    /** Re-reads the hardware/permission state (called on every resume). */
+    /** Re-reads the hardware/permission state and re-evaluates the
+     * assistant lifecycle (called on init and every screen resume).
+     *
+     * Deep-scan F2: when the user enables the assistant without the overlay
+     * permission and grants it in system settings, the service must start
+     * as soon as they return — not on the next app launch. Re-running this
+     * on resume makes the "enabled + granted" state converge to
+     * "service running" idempotently (startForegroundService on an
+     * already-running service is a no-op update). */
     fun refresh() {
         viewModelScope.launch {
             _biometricAvailable.value = biometrics.isDeviceCapable()
-            _overlayGranted.value = android.provider.Settings.canDrawOverlays(context)
+            val overlay = android.provider.Settings.canDrawOverlays(context)
+            _overlayGranted.value = overlay
+            val enabled = settingsRepository.settings.first().assistantEnabled
+            if (AssistantReadiness.shouldAutoStart(enabled, overlay)) {
+                runCatching { FloatingAssistantService.start(context) }
+            }
         }
     }
 
@@ -105,14 +121,14 @@ class SettingsViewModel @Inject constructor(
     fun setAssistantEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsRepository.setAssistantEnabled(enabled)
-            val action = org.cipherkey.app.assistant.AssistantReadiness
+            val action = AssistantReadiness
                 .actionFor(enabled, android.provider.Settings.canDrawOverlays(context))
             when (action) {
-                org.cipherkey.app.assistant.AssistantReadiness.Action.StartService ->
-                    org.cipherkey.app.assistant.FloatingAssistantService.start(context)
-                org.cipherkey.app.assistant.AssistantReadiness.Action.StopService ->
-                    org.cipherkey.app.assistant.FloatingAssistantService.stop(context)
-                org.cipherkey.app.assistant.AssistantReadiness.Action.None ->
+                AssistantReadiness.Action.StartService ->
+                    runCatching { FloatingAssistantService.start(context) }
+                AssistantReadiness.Action.StopService ->
+                    FloatingAssistantService.stop(context)
+                AssistantReadiness.Action.None ->
                     _events.emit(SettingsEvent.RequestOverlayPermission)
             }
         }

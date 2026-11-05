@@ -22,6 +22,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.cipherkey.app.MainViewModel
 import org.cipherkey.app.R
@@ -42,7 +44,13 @@ fun HomeScreen(
     val unlockedCount by viewModel.unlockedCount.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    LaunchedEffect(Unit) { viewModel.refresh() }
+    // Deep-scan F3: entering the Home tab re-reads the counters (LaunchedEffect
+    // alone would miss a resume after locking a session in the tools tabs,
+    // since saveState/restoreState keeps the composable alive).
+    LifecycleResumeEffect(Unit) {
+        viewModel.refresh()
+        onPauseOrDispose { }
+    }
 
     Column(
         modifier = Modifier
