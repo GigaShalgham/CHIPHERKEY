@@ -36,8 +36,18 @@ import javax.crypto.spec.GCMParameterSpec
  */
 interface BiometricKeyStore {
 
-    /** True when this device has enrolled biometrics that can authenticate. */
+    /**
+     * True when this device can authenticate with Class 3 (Strong)
+     * biometrics — the only class that can authorize the Keystore wrap key.
+     */
     fun isDeviceCapable(): Boolean
+
+    /**
+     * The raw canAuthenticate(BIOMETRIC_STRONG) result (v0.4.1). The UI maps
+     * it to an honest reason via [org.cipherkey.app.security.BiometricDiagnostics]
+     * instead of guessing "nothing enrolled".
+     */
+    fun strongAuthResult(): Int
 
     /** True when a wrapped blob exists for [contactKey]. */
     fun hasWrapped(contactKey: String): Boolean
@@ -82,8 +92,10 @@ class AndroidBiometricKeyStore @Inject constructor(
     private var cachedKey: SecretKey? = null
 
     override fun isDeviceCapable(): Boolean =
-        BiometricManager.from(context).canAuthenticate(AUTHENTICATORS) ==
-            BiometricManager.BIOMETRIC_SUCCESS
+        strongAuthResult() == BiometricManager.BIOMETRIC_SUCCESS
+
+    override fun strongAuthResult(): Int =
+        BiometricManager.from(context).canAuthenticate(AUTHENTICATORS)
 
     override fun hasWrapped(contactKey: String): Boolean = fileFor(contactKey).exists()
 
@@ -215,9 +227,15 @@ class AndroidBiometricKeyStore @Inject constructor(
         private const val IV_LENGTH = 12
         private const val TAG_BITS = 128
         private const val MIN_BLOB_LENGTH = IV_LENGTH + TAG_BITS / 8
+        /**
+         * v0.4.1: STRONG only. The wrap key is created with
+         * AUTH_BIOMETRIC_STRONG (below), so the gate must accept exactly the
+         * class that can authorize the cipher — v0.4.0 asked for WEAK|STRONG
+         * here while the key demanded STRONG, so a Class 2 sensor passed the
+         * gate and then could never authorize the wrap.
+         */
         private const val AUTHENTICATORS =
-            BiometricManager.Authenticators.BIOMETRIC_WEAK or
-                BiometricManager.Authenticators.BIOMETRIC_STRONG
+            BiometricManager.Authenticators.BIOMETRIC_STRONG
         private val UNSAFE_FILENAME_CHARS = Regex("[^A-Za-z0-9_-]")
     }
 }

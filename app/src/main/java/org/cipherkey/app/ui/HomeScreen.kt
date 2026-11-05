@@ -29,11 +29,11 @@ import org.cipherkey.app.MainViewModel
 import org.cipherkey.app.R
 import org.cipherkey.app.companion.DestinationRoute
 import org.cipherkey.app.companion.EXTRA_FROM_CLIPBOARD
-import androidx.compose.material3.Card
 
 /**
- * Home (v0.3.0): status chips, the quick-actions grid (in-app tools +
- * clipboard fallbacks), how-it-works and the security properties card.
+ * Home (v0.4.1): status chips + the quick-actions grid only. The
+ * how-it-works and security text walls were dropped (user feedback) —
+ * guides live in README/CHANGELOG, not in the app.
  */
 @Composable
 fun HomeScreen(
@@ -132,21 +132,6 @@ fun HomeScreen(
                     )
                 }
             }
-        }
-
-        SectionCard(title = stringResource(R.string.home_how_title)) {
-            Text(stringResource(R.string.home_how_step1), fontSize = 14.sp)
-            Text(stringResource(R.string.home_how_step2), fontSize = 14.sp)
-            Text(stringResource(R.string.home_how_step3), fontSize = 14.sp)
-            Text(stringResource(R.string.home_how_step4), fontSize = 14.sp)
-        }
-
-        SectionCard(title = stringResource(R.string.home_security_title)) {
-            Text(stringResource(R.string.home_security_b1), fontSize = 14.sp)
-            Text(stringResource(R.string.home_security_b2), fontSize = 14.sp)
-            Text(stringResource(R.string.home_security_b3), fontSize = 14.sp)
-            Text(stringResource(R.string.home_security_b4), fontSize = 14.sp)
-            Text(stringResource(R.string.home_security_b5), fontSize = 14.sp)
         }
 
         Spacer(modifier = Modifier.height(8.dp))

@@ -136,10 +136,11 @@ class BiometricPromptHelper(
             .setNegativeButtonText(
                 activity.getString(org.cipherkey.app.R.string.biometric_prompt_negative),
             )
-            .setAllowedAuthenticators(
-                BiometricManager.Authenticators.BIOMETRIC_WEAK or
-                    BiometricManager.Authenticators.BIOMETRIC_STRONG,
-            )
+            // v0.4.1: STRONG only — a CryptoObject authorizes a Keystore key
+            // created with AUTH_BIOMETRIC_STRONG, so a Class 2 sensor must
+            // never be offered the prompt (v0.4.0 allowed WEAK|STRONG here,
+            // which let weak sensors reach a cipher they can never authorize).
+            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
             .setConfirmationRequired(false)
             .build()
 

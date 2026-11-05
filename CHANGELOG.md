@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1-alpha] - 2026-11-06 — device-feedback fixes: design, tutorials, passphrase suggestion, biometrics
+
+Four pieces of on-device feedback against v0.4.0-alpha, all addressed.
+
+### Fixed
+
+- **The recommended passphrase read as compulsory** (user feedback): the
+  v0.4.0 new-contact dialog auto-showed a monospace "Recommended passphrase"
+  the moment the invite field was blank — which looked like a
+  system-assigned password, and taken at face value on two phones would
+  give each side a DIFFERENT passphrase (they could then never decrypt each
+  other's messages). The card is gone. What stays: one rule line ("Both
+  people must enter the SAME passphrase — agree on it in person") and an
+  OPTIONAL suggestion behind an explicit "Suggest a strong passphrase
+  (optional)" button, labeled with the in-person sharing warning.
+- **Biometric gate/prompt/key class mismatch**: the gate and the system
+  prompt accepted `WEAK|STRONG` while the Keystore wrap key is created with
+  `AUTH_BIOMETRIC_STRONG` — a Class 2 sensor passed the gate, was offered
+  the prompt, and could then never authorize the cipher. Gate, prompt and
+  key now all agree on STRONG (`canAuthenticate(BIOMETRIC_STRONG)`,
+  `setAllowedAuthenticators(BIOMETRIC_STRONG)`).
+- **Silent biometric failures**: the Settings row guessed "No fingerprint
+  enrolled" for every failure. It now maps the raw `canAuthenticate` result
+  to an honest reason (nothing enrolled / no sensor / sensor busy /
+  pending security update / not Strong-class) — `BiometricDiagnostics`,
+  pinned by unit tests including the raw constant values.
+- **Fingerprint affordance missing where users look for it**: "Use
+  fingerprint" now also appears in the contact detail dialog (the natural
+  place), with in-dialog notices for cancel/stale outcomes; the
+  "Remember this key?" offer fires right after a passphrase unlock there.
+
+### Changed
+
+- **Tutorial walls dropped** (user feedback): the Home "How it works" and
+  "Security" cards are gone — status chips and quick actions only. Guides
+  live in README/CHANGELOG, not in the app. Helper text in the contact
+  dialogs was cut to single lines.
+- **Complete Material 3 color schemes + rounder shapes**: v0.3.0 set six
+  color roles and let the rest (primaryContainer, tertiary, …) fall back to
+  the baseline purple — the blue/purple clash that read as broken on
+  device. Every role is now declared (calm indigo primary, slate secondary,
+  warm ochre tertiary for the FAIR strength hint), cards 24dp / dialogs
+  32dp rounded. Contact cards use proper containers; the 🔒/🔓 emoji labels
+  became plain colored text.
+- Contact dialogs migrated off hardcoded literals to string resources
+  (localizable); profile pickers use radio buttons consistently.
+
+### Compatibility
+
+- No schema, permission or wire-format change — in-place update over
+  0.4.0-alpha (versionCode 7). Still zero network code.
+
+### Verified
+
+- New `BiometricDiagnosticsTest` (gate mapping + raw constant pinning);
+  everything else compile- and CI-gated as usual.
+
 ## [0.4.0-alpha] - 2026-11-06 — old-key-era decryption + passphrase advisor
 
 The two items picked from the v0.4.0 roadmap proposal, audited in

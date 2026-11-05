@@ -6,12 +6,20 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.cipherkey.app.companion.UiNotice
+import org.cipherkey.app.security.BiometricDiagnostics
+import org.cipherkey.app.security.BiometricGate
+import org.cipherkey.app.security.BiometricKeyStore
+import org.cipherkey.app.security.BiometricPromptRequest
 import org.cipherkey.core.common.ContactId
 import org.cipherkey.core.sessions.wipe
+import org.cipherkey.data.preferences.SettingsRepository
 import org.cipherkey.data.repository.Contact
 import org.cipherkey.data.repository.ContactRepository
 import org.cipherkey.data.repository.ContactSession
@@ -30,6 +38,8 @@ class ContactsViewModel @Inject constructor(
     private val sessionKeys: SessionKeyRepository,
     private val messageCipher: MessageCipher,
     private val clipboard: ClipboardAccess,
+    private val biometricStore: BiometricKeyStore,
+    private val settings: SettingsRepository,
 ) : ViewModel() {
 
     val contacts: kotlinx.coroutines.flow.StateFlow<List<Contact>> =
@@ -47,6 +57,23 @@ class ContactsViewModel @Inject constructor(
 
     private val _fingerprints = MutableStateFlow<Map<ContactId, String>>(emptyMap())
     val fingerprints = _fingerprints.asStateFlow()
+
+    // ------------------------------------------------------------ biometric (v0.4.1)
+
+    /** System-prompt request while the detail dialog is open (null = none). */
+    private val _biometricPrompt = MutableStateFlow<BiometricPromptRequest?>(null)
+    val biometricPrompt: StateFlow<BiometricPromptRequest?> = _biometricPrompt.asStateFlow()
+
+    /** True when the contact dialog should offer "Use fingerprint". */
+    private val _biometricOffered = MutableStateFlow(false)
+    val biometricOffered: StateFlow<Boolean> = _biometricOffered.asStateFlow()
+
+    /** Honest in-dialog notices (rendered where the user looks, not behind the scrim). */
+    private val _dialogNotice = MutableStateFlow<UiNotice?>(null)
+    val dialogNotice: StateFlow<UiNotice?> = _dialogNotice.asStateFlow()
+
+    private var dialogContactId: ContactId? = null
+    private var lastUnlockedContactId: ContactId? = null
 
     fun refreshAll() {
         viewModelScope.launch {
@@ -128,6 +155,108 @@ class ContactsViewModel @Inject constructor(
             refreshFingerprint(contactId)
             onResult(outcome)
         }
+    }
+
+    /**
+     * v0.4.1: opens the detail dialog — recomputes the fingerprint offer
+     * for THIS contact/era and remembers whose dialog is on screen.
+     */
+    fun openDetail(contactId: ContactId) {
+        dialogContactId = contactId
+        _dialogNotice.value = null
+        refreshBiometricOffer(contactId)
+    }
+
+    /** v0.4.1: gate + wrap presence for the current dialog contact. */
+    fun refreshBiometricOffer(contactId: ContactId) {
+        viewModelScope.launch {
+            val enabled = settings.settings.first().biometricUnlockEnabled
+            val gate = BiometricDiagnostics.gateFor(biometricStore.strongAuthResult())
+            if (!enabled || gate != BiometricGate.AVAILABLE) {
+                _biometricOffered.value = false
+                return@launch
+            }
+            val key = biometricContactKeyFor(contactId)
+                ?: run { _biometricOffered.value = false; return@launch }
+            _biometricOffered.value = biometricStore.hasWrapped(key)
+        }
+    }
+
+    /** v0.4.1: "Use fingerprint" in the dialog — show the system prompt. */
+    fun requestBiometricUnlock() {
+        val id = dialogContactId ?: return
+        viewModelScope.launch {
+            val key = biometricContactKeyFor(id) ?: return@launch
+            if (!biometricStore.hasWrapped(key)) return@launch
+            _dialogNotice.value = null
+            _biometricPrompt.value = BiometricPromptRequest.Unlock(key)
+        }
+    }
+
+    /** v0.4.1: outcome of the system prompt (null = canceled / failed). */
+    fun onBiometricUnlockResult(keyBytes: ByteArray?) {
+        _biometricPrompt.value = null
+        if (keyBytes == null) {
+            _dialogNotice.value = UiNotice(R.string.notice_biometric_failed, null)
+            return
+        }
+        val id = dialogContactId
+        if (id == null) {
+            keyBytes.fill(0)
+            return
+        }
+        viewModelScope.launch {
+            val key = biometricContactKeyFor(id)
+            when (messageCipher.unlockContactWithKey(id, keyBytes)) {
+                UnlockOutcome.Unlocked, UnlockOutcome.AlreadyUnlocked -> {
+                    refreshUnlocked()
+                    refreshFingerprint(id)
+                    _dialogNotice.value = null
+                    _biometricOffered.value = true
+                }
+                UnlockOutcome.NoSession ->
+                    _dialogNotice.value = UiNotice(R.string.notice_no_era, null)
+                else -> {
+                    // Stale wrap (era rotated): discard it honestly.
+                    key?.let { biometricStore.clear(it) }
+                    _dialogNotice.value = UiNotice(R.string.notice_biometric_stale, null)
+                    _biometricOffered.value = false
+                }
+            }
+        }
+    }
+
+    /** v0.4.1: after a passphrase unlock, offer to remember the key. */
+    fun offerRemember(contactId: ContactId) {
+        viewModelScope.launch {
+            val enabled = settings.settings.first().biometricUnlockEnabled
+            val gate = BiometricDiagnostics.gateFor(biometricStore.strongAuthResult())
+            if (!enabled || gate != BiometricGate.AVAILABLE) return@launch
+            val key = biometricContactKeyFor(contactId) ?: return@launch
+            lastUnlockedContactId = contactId
+            if (!biometricStore.hasWrapped(key)) {
+                _biometricPrompt.value = BiometricPromptRequest.Remember(key)
+            }
+        }
+    }
+
+    /** v0.4.1: the key bytes the Remember prompt should wrap. */
+    suspend fun consumeRememberKey(): ByteArray? {
+        if (_biometricPrompt.value !is BiometricPromptRequest.Remember) return null
+        val id = lastUnlockedContactId ?: return null
+        return messageCipher.exportSessionKey(id)
+    }
+
+    /** v0.4.1: prompt finished — [success] says whether the wrap persisted. */
+    fun onRememberDone(success: Boolean) {
+        _biometricPrompt.value = null
+        _biometricOffered.value = _biometricOffered.value || success
+    }
+
+    /** `"contactId:eraId"` — the AAD and storage key for a remembered wrap. */
+    private suspend fun biometricContactKeyFor(contactId: ContactId): String? {
+        val eraId = messageCipher.currentEraId(contactId)?.value ?: return null
+        return "${contactId.value}:$eraId"
     }
 
     fun lockContact(contactId: ContactId) {

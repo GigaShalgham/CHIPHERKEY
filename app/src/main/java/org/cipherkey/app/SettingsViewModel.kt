@@ -20,6 +20,8 @@ import org.cipherkey.data.preferences.SettingsRepository
 import org.cipherkey.data.repository.MessageCipher
 import org.cipherkey.app.assistant.AssistantReadiness
 import org.cipherkey.app.assistant.FloatingAssistantService
+import org.cipherkey.app.security.BiometricDiagnostics
+import org.cipherkey.app.security.BiometricGate
 import org.cipherkey.security.policies.Argon2Profile
 
 /**
@@ -43,9 +45,12 @@ class SettingsViewModel @Inject constructor(
         settingsRepository.settings
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
 
-    /** True when this device has enrolled biometrics (drives the row state). */
-    private val _biometricAvailable = MutableStateFlow(false)
-    val biometricAvailable = _biometricAvailable.asStateFlow()
+    /**
+     * v0.4.1: the honest biometric gate (null = not probed yet). Replaces the
+     * bare boolean: every "can't do it" case now carries its own reason.
+     */
+    private val _biometricGate = MutableStateFlow<BiometricGate?>(null)
+    val biometricGate = _biometricGate.asStateFlow()
 
     /** True while the overlay permission is granted (re-checked on resume). */
     private val _overlayGranted = MutableStateFlow(false)
@@ -69,7 +74,11 @@ class SettingsViewModel @Inject constructor(
      * already-running service is a no-op update). */
     fun refresh() {
         viewModelScope.launch {
-            _biometricAvailable.value = biometrics.isDeviceCapable()
+            // v0.4.1: STRONG-class probe with a honest reason per failure —
+            // v0.4.0 accepted WEAK|STRONG here while the wrap key demanded
+            // STRONG, so weak sensors passed the gate and then failed.
+            _biometricGate.value =
+                BiometricDiagnostics.gateFor(biometrics.strongAuthResult())
             val overlay = android.provider.Settings.canDrawOverlays(context)
             _overlayGranted.value = overlay
             val enabled = settingsRepository.settings.first().assistantEnabled
@@ -102,9 +111,9 @@ class SettingsViewModel @Inject constructor(
      */
     fun setBiometricEnabled(enabled: Boolean) {
         viewModelScope.launch {
-            if (enabled && !biometrics.isDeviceCapable()) {
-                // Nothing enrolled: refuse silently — the row renders the
-                // "No fingerprint enrolled on this device" caption instead.
+            if (enabled && _biometricGate.value != BiometricGate.AVAILABLE) {
+                // Refuse honestly — the row renders the exact reason below
+                // the toggle instead of a silent no-op.
                 return@launch
             }
             if (!enabled) {

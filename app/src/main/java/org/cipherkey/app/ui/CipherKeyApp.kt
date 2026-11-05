@@ -98,7 +98,10 @@ fun CipherKeyApp() {
                 )
             }
             composable(DestinationRoute.CONTACTS) {
-                ContactsScreen(viewModel = hiltViewModel<ContactsViewModel>())
+                ContactsScreen(
+                    viewModel = hiltViewModel<ContactsViewModel>(),
+                    biometrics = LocalBiometrics.current,
+                )
             }
             composable(DestinationRoute.SETTINGS) {
                 SettingsScreen(

@@ -22,7 +22,6 @@
     <string name="sheet_from_selection">From text selection</string>
     <string name="sheet_from_share">From share</string>
     <string name="sheet_from_clipboard">From clipboard</string>
-    <string name="sheet_from_manual">Manual input</string>
     <string name="reading_clipboard">Reading the clipboard…</string>
     <string name="decrypting">Decrypting…</string>
     <string name="draft_label">Draft</string>
@@ -57,6 +56,14 @@
     <string name="biometric_prompt_subtitle">Touch the fingerprint sensor</string>
     <string name="biometric_prompt_negative">Not now</string>
 
+    <!-- v0.4.1: honest biometric capability reasons (Strong-class only —
+         the wrap key is created with AUTH_BIOMETRIC_STRONG). -->
+    <string name="biometric_reason_none_enrolled">No fingerprint enrolled — enroll one in Android settings first (screen lock + fingerprint).</string>
+    <string name="biometric_reason_no_hardware">This device has no fingerprint sensor.</string>
+    <string name="biometric_reason_hw_unavailable">The fingerprint sensor is currently unavailable — try again later.</string>
+    <string name="biometric_reason_security_update">A pending security update blocks fingerprint key wrapping — install it and try again.</string>
+    <string name="biometric_reason_not_strong">This device\'s sensor doesn\'t meet the Strong (Class 3) security class required for hardware-backed key wrapping.</string>
+
     <!-- Floating assistant -->
     <string name="assistant_channel_name">Floating assistant</string>
     <string name="assistant_encrypt">Encrypt</string>
@@ -64,7 +71,8 @@
     <string name="assistant_notification_title">CipherKey assistant active</string>
     <string name="assistant_notification_text">Tap the bubble to encrypt or decrypt the clipboard.</string>
 
-    <!-- Home (v0.3.0) -->
+    <!-- Home (v0.3.0). v0.4.1: the how-it-works and security text walls are
+         gone (user feedback) — status and quick actions only. -->
     <string name="home_status_title">Status</string>
     <string name="home_status_contacts">Contacts: %1$d</string>
     <string name="home_status_unlocked">Unlocked: %1$d</string>
@@ -74,17 +82,6 @@
     <string name="home_quick_decrypt_text">Decrypt text</string>
     <string name="home_quick_encrypt_clip">Encrypt clipboard</string>
     <string name="home_quick_decrypt_clip">Decrypt clipboard</string>
-    <string name="home_how_title">How it works</string>
-    <string name="home_how_step1">1. Agree on a passphrase in person, then exchange the invite code (CKS1:…) once.</string>
-    <string name="home_how_step2">2. Sending: select the text you typed and tap \"Encrypt (CipherKey)\" in the selection toolbar — or use the Encrypt tab.</string>
-    <string name="home_how_step3">3. Receiving: select the CK1:… message and tap \"Decrypt (CipherKey)\", or share it to CipherKey.</string>
-    <string name="home_how_step4">4. If an app hides the toolbar entries, use the clipboard buttons, the in-app Encrypt/Decrypt tabs, or the floating assistant.</string>
-    <string name="home_security_title">Security</string>
-    <string name="home_security_b1">• Zero Android permissions, no network code.</string>
-    <string name="home_security_b2">• AES-256-GCM with Argon2id key derivation (RFC 9106).</string>
-    <string name="home_security_b3">• Keys live in memory only and are wiped on lock or timeout.</string>
-    <string name="home_security_b4">• Optional fingerprint unlock uses hardware-backed Keystore keys.</string>
-    <string name="home_security_b5">• No servers — nothing ever leaves this device.</string>
 
     <!-- In-app tools screens (v0.3.0) -->
     <string name="encrypt_title">Encrypt</string>
@@ -107,9 +104,49 @@
 
     <!-- Contacts -->
     <string name="contacts_title">Contacts</string>
-    <string name="contacts_add">Add contact</string>
+    <string name="contacts_add">+ Add contact</string>
     <string name="contacts_empty_title">No contacts yet</string>
     <string name="contacts_empty_body">Create a contact, agree on a passphrase in person, and exchange the invite code once.</string>
+
+    <!-- v0.4.1 contact dialogs (replaces the hardcoded literals) -->
+    <string name="contact_new_title">New contact</string>
+    <string name="contact_name_label">Name</string>
+    <string name="contact_invite_label">Invite code (optional)</string>
+    <string name="contact_invite_help">Leave empty to create a new key (you share the code). Paste their CKS1:… code to import their key.</string>
+    <string name="contact_argon2_title">Argon2id strength</string>
+    <string name="contact_create">Create</string>
+    <string name="cancel">Cancel</string>
+    <string name="contact_creation_failed">Creation failed — check the invite code and try again.</string>
+    <!-- v0.4.1: the shared passphrase rule. The recommendation is OPTIONAL
+         (behind an explicit button) and never auto-shown — different
+         passphrases on the two phones means they can never decrypt each
+         other\'s messages, so the rule line is the one text that stays. -->
+    <string name="contact_shared_passphrase_rule">Both people must enter the SAME passphrase — agree on it in person. It is never sent or stored by the app.</string>
+    <string name="contact_suggest_passphrase">Suggest a strong passphrase (optional)</string>
+    <string name="contact_suggest_hide">Hide suggestion</string>
+    <string name="contact_suggestion_new">New suggestion</string>
+    <string name="contact_suggestion_bits">≈ %1$d bits guaranteed — generated on this device.</string>
+    <string name="contact_suggestion_warning">Share it with your contact IN PERSON — never in the same message as the invite code. If you use it, you must BOTH type this exact passphrase at unlock time.</string>
+    <string name="contact_unlock_hint">Enter the shared passphrase to unlock this session key.</string>
+    <string name="contact_unlock_action">Unlock session</string>
+    <string name="contact_unlocked">Session unlocked</string>
+    <string name="lock_now_short">Lock now</string>
+    <string name="contact_key_fingerprint">Key fingerprint: %1$s</string>
+    <string name="contact_older_eras">%1$d older key era(s) kept for history</string>
+    <string name="contact_invite_section">Invite code</string>
+    <string name="contact_copy_invite">Copy invite</string>
+    <string name="contact_share_invite">Share invite</string>
+    <string name="copied_ok">Copied ✓</string>
+    <string name="copy_failed">Copy failed — clipboard unavailable</string>
+    <string name="contact_no_era">No key era yet.</string>
+    <string name="contact_era_count_none">no key era</string>
+    <string name="contact_era_count">%1$d key era(s)</string>
+    <string name="contact_state_unlocked">Unlocked</string>
+    <string name="contact_state_locked">Locked</string>
+    <string name="contact_delete_confirm">Delete this contact and all its key data?</string>
+    <string name="contact_delete_yes">Yes, delete</string>
+    <string name="contact_delete_keep">Keep</string>
+    <string name="contact_delete">Delete contact</string>
 
     <!-- Settings (v0.3.0) -->
     <string name="settings_title">Settings</string>
@@ -121,7 +158,6 @@
     <string name="lock_now">Lock all sessions now</string>
     <string name="settings_biometric_title">Fingerprint unlock</string>
     <string name="settings_biometric_summary">Remember each unlocked key, protected by the fingerprint sensor and the Android Keystore. The passphrase always remains available.</string>
-    <string name="settings_biometric_unavailable">No fingerprint enrolled on this device</string>
     <string name="settings_assistant_title">Floating assistant</string>
     <string name="settings_assistant_summary">A small draggable button over other apps with quick Encrypt / Decrypt clipboard actions.</string>
     <string name="settings_assistant_needs_overlay">The \"Display over other apps\" permission is required — it is granted in Android settings, not at runtime.</string>

@@ -35,6 +35,7 @@ import org.cipherkey.app.ContactsViewModel
 import org.cipherkey.app.R
 import org.cipherkey.app.SettingsEvent
 import org.cipherkey.app.SettingsViewModel
+import org.cipherkey.app.security.BiometricGate
 import org.cipherkey.security.policies.Argon2Profile
 import org.cipherkey.security.policies.KeyPolicy
 
@@ -49,7 +50,7 @@ fun SettingsScreen(
     contactsViewModel: ContactsViewModel,
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    val biometricAvailable by viewModel.biometricAvailable.collectAsStateWithLifecycle()
+    val biometricGate by viewModel.biometricGate.collectAsStateWithLifecycle()
     val overlayGranted by viewModel.overlayGranted.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -142,16 +143,18 @@ fun SettingsScreen(
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (!biometricAvailable) {
+            if (biometricGate != null && biometricGate != BiometricGate.AVAILABLE) {
+                // v0.4.1: the honest reason per failure — the v0.4.0 row
+                // guessed "No fingerprint enrolled" for every case.
                 Text(
-                    stringResource(R.string.settings_biometric_unavailable),
+                    stringResource(biometricReasonRes(biometricGate)),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.error,
                 )
             }
             SwitchRow(
-                checked = settings.biometricUnlockEnabled && biometricAvailable,
-                enabled = biometricAvailable,
+                checked = settings.biometricUnlockEnabled && biometricGate == BiometricGate.AVAILABLE,
+                enabled = biometricGate == BiometricGate.AVAILABLE,
                 onCheckedChange = viewModel::setBiometricEnabled,
             )
 
@@ -242,6 +245,16 @@ fun SettingsScreen(
             )
         }
     }
+}
+
+@Composable
+private fun biometricReasonRes(gate: BiometricGate): Int = when (gate) {
+    BiometricGate.NONE_ENROLLED -> R.string.biometric_reason_none_enrolled
+    BiometricGate.NO_HARDWARE -> R.string.biometric_reason_no_hardware
+    BiometricGate.HW_UNAVAILABLE -> R.string.biometric_reason_hw_unavailable
+    BiometricGate.SECURITY_UPDATE -> R.string.biometric_reason_security_update
+    BiometricGate.NOT_STRONG -> R.string.biometric_reason_not_strong
+    BiometricGate.AVAILABLE -> R.string.settings_biometric_summary
 }
 
 @Composable
