@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha] - 2026-11-06 — old-key-era decryption + passphrase advisor
+
+The two items picked from the v0.4.0 roadmap proposal, audited in
+`docs/DEEP-SCAN-2026-11-06.md`.
+
+### Added
+
+- **Old-key-era message decryption**: an envelope whose keyId belongs to a
+  superseded era now decrypts. `KeySessionManager` keeps a bounded LRU
+  historical cache (≤ 8 entries, decrypt-only — a historical key is never
+  the sending key and never visible to active-session lookups); entries
+  are wiped on eviction, expiry, `lock(contact)` and `lockAll`. With no
+  historical session yet, decryption returns `NeedsEraUnlock`; the UI
+  collects the passphrase of that era and `unlockEra` re-derives it
+  against the era's wrapped digest verifier (the same honest-error
+  contract as `unlockContact`). Biometric offers stay off for superseded
+  eras — a fingerprint wrap is bound by AAD to the latest era only.
+- **Stale-active-session guard**: a latest-era envelope is never decrypted
+  with an active session that predates the rotation (previously a
+  guaranteed AEAD failure); it now asks for a fresh unlock.
+- **Passphrase advisor** (`security:policies`): a live strength meter
+  under every passphrase field, plus a recommended-passphrase generator
+  in the new-contact dialog (7 words from a 512-word list + 2 ASCII
+  digits, `Locale.ROOT` — 69 bits guaranteed on top of the Argon2id KDF
+  cost). The recommendation is display-only and never stored; it is
+  copied through the `ClipboardAccess` chokepoint. Enforcement stays
+  with `KeyPolicy`.
+
+### Changed
+
+- `unlockContact` and `unlockEra` share `verifyAndPersistVerifier` (the
+  extracted verifier step; v1→v2 migration rewrite and best-effort
+  first-unlock persist preserved).
+- Era-aware passphrase prompts across the tools tab, the companion flows
+  and the dormant IME; `MessageCipher` gained `NeedsEraUnlock` /
+  `unlockEra` and lost the unreachable `StaleKeyEra` outcome.
+
+### Compatibility
+
+- No Room schema change (multi-era rows already existed), no new
+  permissions, no DI changes — installs as an in-place update over
+  0.3.0-alpha. Still zero network code.
+
+### Verified
+
+- New unit suites: historical-session lifecycle, era-unlock round trip,
+  stale-session guard, advisor (wordlist pinned at 512 so it cannot
+  silently drift). CI green (`gradle test` + `assembleDebug`, JDK 21 /
+  SDK 36) after the audit's two fixes (F1 initialization order `c4de3ce`,
+  F2 floor-case test expectation `4efe856`); full report in
+  `docs/DEEP-SCAN-2026-11-06.md`.
+
 ## [0.3.0-alpha] - 2026-11-05 — the lost release, re-implemented
 
 > The original v0.3.0-alpha source was never committed (see spec 005 and
