@@ -102,6 +102,9 @@ class PassphraseAdvisorTest {
     @Test
     fun `estimateBits is zero for empty and floors at zero`() {
         assertEquals(0, PassphraseAdvisor.estimateBits(""))
-        assertEquals(0, PassphraseAdvisor.estimateBits("     "))
+        // 4 x 'a': raw 18 bits − 10 (single class) − 10 (identical run) = −2,
+        // floored at zero by coerceAtLeast(0) — this is the floor case.
+        // (Five spaces would NOT reach the floor: 25 − 20 = 5.)
+        assertEquals(0, PassphraseAdvisor.estimateBits("aaaa"))
     }
 }
