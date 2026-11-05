@@ -265,6 +265,9 @@ private fun AddContactDialog(
     // home-screen feedback column is behind the scrim and was invisible at
     // the moment the error happened.
     var error by remember { mutableStateOf<String?>(null) }
+    // v0.4.1 CI fix: stringResource cannot be called inside the non-composable
+    // onCreate callback — hoist it into composable scope.
+    val creationFailedText = stringResource(R.string.contact_creation_failed)
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
@@ -342,7 +345,7 @@ private fun AddContactDialog(
                     error = null
                     onCreate(name, invite.ifBlank { null }, profile) { ok ->
                         busy = false
-                        if (!ok) error = stringResource(R.string.contact_creation_failed)
+                        if (!ok) error = creationFailedText
                     }
                 },
             ) { Text(stringResource(R.string.contact_create)) }
@@ -428,6 +431,14 @@ private fun ContactDetailDialog(
 
     val latestEra = eras.firstOrNull()
 
+    // v0.4.1 CI fix: hoisted into composable scope — stringResource cannot be
+    // called from the non-composable onClick / onUnlock callbacks.
+    val copiedOkText = stringResource(R.string.copied_ok)
+    val copyFailedText = stringResource(R.string.copy_failed)
+    val unlockedText = stringResource(R.string.contact_session_unlocked)
+    val wrongPassphraseText = stringResource(R.string.notice_wrong_passphrase)
+    val noEraText = stringResource(R.string.contact_no_era)
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(contact.displayName) },
@@ -478,15 +489,15 @@ private fun ContactDetailDialog(
                                 busy = false
                                 when (outcome) {
                                     UnlockOutcome.Unlocked, UnlockOutcome.AlreadyUnlocked -> {
-                                        unlockMessage = stringResource(R.string.contact_session_unlocked)
+                                        unlockMessage = unlockedText
                                         // v0.4.1: this is the moment the
                                         // "Remember this key?" prompt can fire.
                                         onPassphraseUnlocked()
                                     }
                                     UnlockOutcome.WrongPassphrase ->
-                                        unlockMessage = stringResource(R.string.notice_wrong_passphrase)
+                                        unlockMessage = wrongPassphraseText
                                     UnlockOutcome.NoSession ->
-                                        unlockMessage = stringResource(R.string.contact_no_era)
+                                        unlockMessage = noEraText
                                     is UnlockOutcome.Rejected -> unlockMessage = outcome.reason
                                     is UnlockOutcome.Failed -> unlockMessage = outcome.reason
                                 }
@@ -532,9 +543,9 @@ private fun ContactDetailDialog(
                             // chokepoint (not a raw ClipboardManager), with
                             // honest success/failure feedback next to it.
                             inviteCopyMessage = if (onCopyInvite(latestEra.inviteCode)) {
-                                stringResource(R.string.copied_ok)
+                                copiedOkText
                             } else {
-                                stringResource(R.string.copy_failed)
+                                copyFailedText
                             }
                         }) { Text(stringResource(R.string.contact_copy_invite)) }
                         TextButton(onClick = {
@@ -554,7 +565,7 @@ private fun ContactDetailDialog(
                         Text(
                             message,
                             fontSize = 12.sp,
-                            color = if (message == stringResource(R.string.copied_ok)) {
+                            color = if (message == copiedOkText) {
                                 MaterialTheme.colorScheme.primary
                             } else {
                                 MaterialTheme.colorScheme.error

@@ -143,18 +143,21 @@ fun SettingsScreen(
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (biometricGate != null && biometricGate != BiometricGate.AVAILABLE) {
+            // v0.4.1 CI fix: a local copy enables the null/AVAILABLE checks —
+            // smart casts are impossible on delegated properties.
+            val gate = biometricGate
+            if (gate != null && gate != BiometricGate.AVAILABLE) {
                 // v0.4.1: the honest reason per failure — the v0.4.0 row
                 // guessed "No fingerprint enrolled" for every case.
                 Text(
-                    stringResource(biometricReasonRes(biometricGate)),
+                    stringResource(biometricReasonRes(gate)),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.error,
                 )
             }
             SwitchRow(
-                checked = settings.biometricUnlockEnabled && biometricGate == BiometricGate.AVAILABLE,
-                enabled = biometricGate == BiometricGate.AVAILABLE,
+                checked = settings.biometricUnlockEnabled && gate == BiometricGate.AVAILABLE,
+                enabled = gate == BiometricGate.AVAILABLE,
                 onCheckedChange = viewModel::setBiometricEnabled,
             )
 
