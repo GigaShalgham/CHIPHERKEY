@@ -129,7 +129,7 @@
     <string name="contact_suggestion_warning">Share it with your contact IN PERSON — never in the same message as the invite code. If you use it, you must BOTH type this exact passphrase at unlock time.</string>
     <string name="contact_unlock_hint">Enter the shared passphrase to unlock this session key.</string>
     <string name="contact_unlock_action">Unlock session</string>
-    <string name="contact_unlocked">Session unlocked</string>
+    <string name="contact_session_unlocked">Session unlocked</string>
     <string name="lock_now_short">Lock now</string>
     <string name="contact_key_fingerprint">Key fingerprint: %1$s</string>
     <string name="contact_older_eras">%1$d older key era(s) kept for history</string>

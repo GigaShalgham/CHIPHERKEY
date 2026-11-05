@@ -478,7 +478,7 @@ private fun ContactDetailDialog(
                                 busy = false
                                 when (outcome) {
                                     UnlockOutcome.Unlocked, UnlockOutcome.AlreadyUnlocked -> {
-                                        unlockMessage = stringResource(R.string.contact_unlocked)
+                                        unlockMessage = stringResource(R.string.contact_session_unlocked)
                                         // v0.4.1: this is the moment the
                                         // "Remember this key?" prompt can fire.
                                         onPassphraseUnlocked()
@@ -496,7 +496,7 @@ private fun ContactDetailDialog(
                     ) { Text(stringResource(R.string.contact_unlock_action)) }
                 } else {
                     Text(
-                        stringResource(R.string.contact_unlocked),
+                        stringResource(R.string.contact_session_unlocked),
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.primary,
                     )
