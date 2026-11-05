@@ -39,7 +39,7 @@ When an app's selection toolbar is unavailable, the Home screen offers an
 | Mode B: public-key (Signal et al.) | ❌ interface only — evaluated and deferred, see docs/PLUGINS.md |
 | Old-key-era message decryption | ❌ v0.2 limitation (documented) |
 | Built-in keyboard (IME) | ❌ removed from the APK in v0.2 — the `:keyboard` module stays in-repo, compiled and tested as a dormant library |
-| v0.3.0-alpha (floating assistant, fingerprint unlock, tools screen) | 🚧 source was lost before commit; reference decompilation preserved on `recovered/v0.3.0-alpha-from-apk`, re-implementation tracked in `specs/005-v0.3.0-recovery` |
+| v0.3.0-alpha (floating assistant, fingerprint unlock, in-app tools) | ✅ re-implemented on `main` (spec 005, recovered from the signed release APK; see CHANGELOG) |
 
 See `ENGINEERING_REPORT.md` (v0.1 history), `docs/DEEP-SCAN-2026-11-05.md`
 (the full audit) and `CHANGELOG.md` for engineering status and known
@@ -52,14 +52,19 @@ platform 36 and build-tools 36.0.0 (or let Gradle's SDK tooling handle it).
 
 ```bash
 ./gradlew assembleDebug          # debug APK  -> app/build/outputs/apk/debug/
-./gradlew test                   # full unit-test suite (197 unique tests / 19 classes)
+./gradlew test                   # full unit-test suite (90 tests / 0 failures, v0.3.0)
 ```
 
-The application requests **no Android system permissions** and contains **no
-network code** — the only entry `aapt2 dump permissions` shows is the
-`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` marker that AndroidX generates
-(a permission the app owns itself; it grants no capabilities). Verify it
-yourself: `aapt2 dump permissions app/build/outputs/apk/debug/app-debug.apk`.
+The application contains **no network code**. Its manifest is zero-permission
+by default: the two v0.3.0 features that need Android permissions — the
+floating assistant (`SYSTEM_ALERT_WINDOW`, foreground-service and
+notification permissions) and fingerprint unlock (`USE_BIOMETRIC`) — are
+**opt-in and off by default**, and with both disabled the app behaves
+exactly like v0.2. The only always-present entry `aapt2 dump permissions`
+shows is the `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` marker that AndroidX
+generates (a permission the app owns itself; it grants no capabilities).
+Verify it yourself: `aapt2 dump permissions
+app/build/outputs/apk/debug/app-debug.apk`.
 
 ## How it works
 
@@ -92,7 +97,8 @@ yourself: `aapt2 dump permissions app/build/outputs/apk/debug/app-debug.apk`.
   are migrated transparently on next unlock).
 - Strict, canonical wire format; unknown versions/algorithms/modes are
   rejected before any cryptographic work.
-- `allowBackup=false`; no `INTERNET` permission; zero-permission manifest.
+- `allowBackup=false`; no `INTERNET` permission; zero-permission default
+  (v0.3.0 opt-in features add their own, documented in the CHANGELOG).
 
 Limitations and the honest threat model are in `docs/THREAT_MODEL.md`.
 

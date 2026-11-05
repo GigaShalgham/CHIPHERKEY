@@ -2,6 +2,7 @@ package org.cipherkey.app.companion
 
 import android.content.Intent
 import dagger.hilt.android.AndroidEntryPoint
+import org.cipherkey.app.R
 import org.cipherkey.app.companion.ProcessTextContract.SelectedText
 
 /**
@@ -31,10 +32,10 @@ class ShareDecryptActivity : BaseCompanionActivity() {
                     readOnly = true,
                 )
             SelectedText.Empty -> showNotice(
-                "Nothing was shared. Share the \"CK1:…\" message text with CipherKey.",
+                UiNotice(R.string.notice_nothing_shared),
             )
             is SelectedText.Oversized -> showNotice(
-                "The shared text is longer than ${parsed.limitBytes / 1024} KiB and is not a valid CK1 envelope.",
+                UiNotice(R.string.notice_oversized_shared, "${parsed.limitBytes / 1024}"),
             )
         }
     }

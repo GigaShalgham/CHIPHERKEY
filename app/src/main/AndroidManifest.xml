@@ -2,13 +2,27 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!--
-      CipherKey deliberately requests ZERO Android permissions.
+      v0.3.0: the permission-free baseline (v0.2) deliberately stays, but
+      two OPT-IN features add permissions of their own:
 
-      The companion architecture (spec 003) is entirely permission-free:
-      text arrives via ACTION_PROCESS_TEXT / ACTION_SEND or is read from
-      the clipboard only after an explicit user action while CipherKey
-      is in the foreground (permitted without any runtime permission).
+      * Floating assistant (off by default): SYSTEM_ALERT_WINDOW for the
+        overlay bubble (granted in Android settings, never at runtime) and
+        a FOREGROUND_SERVICE (specialUse) so the bubble survives while
+        other apps are in front. POST_NOTIFICATIONS is required to show
+        the assistant's foreground-service notification on API 33+.
+      * Fingerprint unlock (off by default): USE_BIOMETRIC for the system
+        BiometricPrompt; the wrap key lives in the Android Keystore with
+        setUserAuthenticationRequired(true).
+
+      With both features disabled (the default), the app behaves exactly
+      like v0.2: no permission is requested, no service runs, and there is
+      no network code.
     -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <application
         android:name=".CipherKeyApplication"
@@ -42,7 +56,7 @@
             android:label="@string/process_text_encrypt_label"
             android:noHistory="true"
             android:excludeFromRecents="true"
-            android:theme="@style/Theme.CipherKey">
+            android:theme="@style/Theme.CipherKey.Companion">
             <intent-filter android:label="@string/process_text_encrypt_label">
                 <action android:name="android.intent.action.PROCESS_TEXT" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -56,7 +70,7 @@
             android:label="@string/process_text_decrypt_label"
             android:noHistory="true"
             android:excludeFromRecents="true"
-            android:theme="@style/Theme.CipherKey">
+            android:theme="@style/Theme.CipherKey.Companion">
             <intent-filter android:label="@string/process_text_decrypt_label">
                 <action android:name="android.intent.action.PROCESS_TEXT" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -70,13 +84,28 @@
             android:label="@string/share_decrypt_label"
             android:noHistory="true"
             android:excludeFromRecents="true"
-            android:theme="@style/Theme.CipherKey">
+            android:theme="@style/Theme.CipherKey.Companion">
             <intent-filter android:label="@string/share_decrypt_label">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!--
+          v0.3.0 floating assistant: a user-enabled overlay bubble with
+          quick Encrypt/Decrypt-clipboard actions. Started only from the
+          Settings toggle (or the auto-start after the user enabled it);
+          never exported, no intent filters.
+        -->
+        <service
+            android:name=".assistant.FloatingAssistantService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-enabled floating quick-access overlay for clipboard encryption and decryption actions" />
+        </service>
     </application>
 
 </manifest>

@@ -5,9 +5,14 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.cipherkey.app.R
+import org.cipherkey.app.security.BiometricKeyStore
+import org.cipherkey.app.security.BiometricPromptRequest
 import org.cipherkey.core.common.ContactId
 import org.cipherkey.core.sessions.wipe
 import org.cipherkey.data.preferences.SettingsRepository
@@ -34,7 +39,7 @@ enum class TextSource { SELECTION, SHARE, CLIPBOARD }
  * State machine behind all three companion entry points (spec 003):
  * the PROCESS_TEXT encrypt activity, the PROCESS_TEXT decrypt activity,
  * the ACTION_SEND decrypt activity — plus the clipboard entry used from
- * the main app's Home screen.
+ * the main app's Home screen and the floating assistant (v0.3.0).
  *
  * Everything cryptographic is delegated to the existing [MessageCipher]
  * facade; this class owns ONLY flow state and UX outcomes.
@@ -57,11 +62,15 @@ data class CompanionUiState(
     val resultText: String? = null,
     val resultContactName: String? = null,
     val copied: Boolean = false,
-    /** Human-readable notice for edge outcomes; null = none. */
-    val notice: String? = null,
+    /** Typed notice for edge outcomes; null = none (v0.3.0: resource id). */
+    val notice: UiNotice? = null,
     /** True when the notice offers a clipboard "Try again" (spec 004). */
     val retryable: Boolean = false,
     val busy: Boolean = false,
+    /** v0.3.0: a remembered fingerprint wrap exists for the pending contact. */
+    val biometricOffered: Boolean = false,
+    /** v0.3.0: non-null while the system biometric prompt should be shown. */
+    val biometricPrompt: BiometricPromptRequest? = null,
 ) {
     enum class Phase { Idle, Prepare, NeedsUnlock, Result, Notice }
 
@@ -70,6 +79,14 @@ data class CompanionUiState(
 
     val selectedContactUnlocked: Boolean
         get() = selectedContactId in unlocked
+
+    /**
+     * v0.3.0: the result can go back into the calling field — only for
+     * PROCESS_TEXT launches into an editable field (both directions now:
+     * an inserted envelope on encrypt, an inserted plaintext on decrypt).
+     */
+    val insertable: Boolean
+        get() = source == TextSource.SELECTION && !readOnly
 }
 
 @HiltViewModel
@@ -78,6 +95,7 @@ class CompanionViewModel @Inject constructor(
     private val contactsRepository: ContactRepository,
     private val settings: SettingsRepository,
     private val clipboard: ClipboardAccess,
+    private val biometrics: BiometricKeyStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(CompanionUiState())
@@ -85,6 +103,12 @@ class CompanionViewModel @Inject constructor(
 
     /** True once a flow has begun (idempotence across activity recreation). */
     private val begun = MutableStateFlow(false)
+
+    /** v0.3.0: contact unlocked most recently (biometric remember target). */
+    private var lastUnlockedContactId: ContactId? = null
+
+    /** v0.3.0: what to run after a successful biometric unlock. */
+    private var afterUnlock: (suspend () -> Unit)? = null
 
     // ------------------------------------------------------------ entry
 
@@ -119,7 +143,7 @@ class CompanionViewModel @Inject constructor(
     }
 
     /** Dead-end notice for unusable input (activity-level hardening). */
-    fun showNotice(mode: CompanionMode, notice: String, retryable: Boolean = false) {
+    fun showNotice(mode: CompanionMode, notice: UiNotice, retryable: Boolean = false) {
         if (!begun.compareAndSet(false, true)) return
         _state.value = CompanionUiState(
             mode = mode,
@@ -155,22 +179,23 @@ class CompanionViewModel @Inject constructor(
                     phase = CompanionUiState.Phase.NeedsUnlock,
                     pendingContactId = id,
                     pendingContactName = s.selectedContact?.displayName,
-                )
+                ).also { refreshBiometricOffer() }
                 is EncryptOutcome.NoSession -> _state.value = _state.value.copy(
                     busy = false,
-                    notice = "This contact has no key era yet. Open CipherKey, open the contact, and create or import a key first.",
+                    notice = UiNotice(R.string.notice_no_era),
                 )
                 is EncryptOutcome.EmptyDraft -> _state.value = _state.value.copy(
                     busy = false,
-                    notice = "Nothing to encrypt.",
+                    notice = UiNotice(R.string.notice_nothing_to_encrypt),
                 )
                 is EncryptOutcome.Failed -> _state.value = _state.value.copy(
                     busy = false,
-                    notice = "Encryption failed: ${out.error}",
+                    notice = UiNotice(R.string.notice_encrypt_failed, out.error.toString()),
                 )
             }
         }
     }
+
     /** Unlock (if needed) and encrypt in one step, from the prepare card. */
     fun unlockAndEncrypt(passphrase: CharArray) {
         val id = _state.value.selectedContactId ?: run {
@@ -201,9 +226,144 @@ class CompanionViewModel @Inject constructor(
         _state.value = if (copied) {
             _state.value.copy(copied = true)
         } else {
-            _state.value.copy(notice = "Could not access the clipboard.")
+            _state.value.copy(notice = UiNotice(R.string.notice_clipboard_access_failed))
         }
     }
+
+    // ------------------------------------------------------------ biometric
+
+    /**
+     * v0.3.0: recompute whether the unlock card should offer the
+     * fingerprint button (feature enabled + device capable + a wrap
+     * exists for the pending contact's current era).
+     */
+    fun refreshBiometricOffer() {
+        launchSafely {
+            val enabled = settings.settings.first().biometricUnlockEnabled
+            if (!enabled || !biometrics.isDeviceCapable()) {
+                _state.value = _state.value.copy(biometricOffered = false)
+                return@launchSafely
+            }
+            val contactKey = currentBiometricContactKey() ?: run {
+                _state.value = _state.value.copy(biometricOffered = false)
+                return@launchSafely
+            }
+            _state.value = _state.value.copy(
+                biometricOffered = biometrics.hasWrapped(contactKey),
+            )
+        }
+    }
+
+    /** v0.3.0: "Use fingerprint" on the unlock card — show the system prompt. */
+    fun requestBiometricUnlock() {
+        launchSafely {
+            val contactKey = currentBiometricContactKey() ?: return@launchSafely
+            if (!biometrics.hasWrapped(contactKey)) return@launchSafely
+            _state.value = _state.value.copy(
+                biometricPrompt = BiometricPromptRequest.Unlock(contactKey),
+            )
+        }
+    }
+
+    /**
+     * v0.3.0: outcome of the system prompt. Null = canceled or failed —
+     * the passphrase path remains. Non-null = unlock the era with the
+     * remembered key and continue the interrupted flow.
+     */
+    fun onBiometricUnlockResult(keyBytes: ByteArray?) {
+        _state.value = _state.value.copy(biometricPrompt = null)
+        if (keyBytes == null) {
+            _state.value = _state.value.copy(
+                notice = UiNotice(R.string.notice_biometric_failed),
+            )
+            return
+        }
+        val contactId = _state.value.pendingContactId ?: _state.value.selectedContactId
+        if (contactId == null) {
+            keyBytes.fill(0)
+            return
+        }
+        launchSafely {
+            val contactKey = biometricContactKeyFor(contactId)
+            val outcome = messageCipher.unlockContactWithKey(contactId, keyBytes)
+            when (outcome) {
+                UnlockOutcome.Unlocked, UnlockOutcome.AlreadyUnlocked -> {
+                    _state.value = _state.value.copy(
+                        unlocked = _state.value.unlocked + contactId,
+                        notice = null,
+                    )
+                    afterUnlock?.invoke()
+                }
+                UnlockOutcome.NoSession -> {
+                    _state.value = _state.value.copy(
+                        notice = UiNotice(R.string.notice_no_era),
+                    )
+                }
+                else -> {
+                    // The wrap opened but the era no longer matches (rotated
+                    // since remember) — discard the stale wrap so it is never
+                    // offered again, and fall back to the passphrase.
+                    contactKey?.let { biometrics.clear(it) }
+                    afterUnlock = null
+                    _state.value = _state.value.copy(
+                        notice = UiNotice(R.string.notice_biometric_stale),
+                        phase = CompanionUiState.Phase.NeedsUnlock,
+                        busy = false,
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * v0.3.0: after a passphrase unlock, offer to remember the key behind
+     * the fingerprint (only when enabled, capable, and not already wrapped).
+     */
+    fun offerRemember(contactId: ContactId) {
+        launchSafely {
+            val enabled = settings.settings.first().biometricUnlockEnabled
+            if (!enabled || !biometrics.isDeviceCapable()) return@launchSafely
+            val contactKey = biometricContactKeyFor(contactId) ?: return@launchSafely
+            if (!biometrics.hasWrapped(contactKey)) {
+                _state.value = _state.value.copy(
+                    biometricPrompt = BiometricPromptRequest.Remember(contactKey),
+                )
+            }
+        }
+    }
+
+    /**
+     * v0.3.0: the key bytes the Remember prompt should wrap — the active
+     * session key of [lastUnlockedContactId], exported once for the prompt.
+     */
+    suspend fun consumeRememberKey(): ByteArray? {
+        if (_state.value.biometricPrompt !is BiometricPromptRequest.Remember) return null
+        val id = lastUnlockedContactId ?: return null
+        return messageCipher.exportSessionKey(id)
+    }
+
+    /** v0.3.0: prompt finished — [success] says whether the wrap persisted. */
+    fun onRememberDone(success: Boolean) {
+        _state.value = _state.value.copy(
+            biometricPrompt = null,
+            biometricOffered = _state.value.biometricOffered || success,
+        )
+    }
+
+    /** The pending-or-selected contact's biometric key, or null. */
+    private suspend fun currentBiometricContactKey(): String? {
+        val id = _state.value.pendingContactId ?: _state.value.selectedContactId
+            ?: return null
+        return biometricContactKeyFor(id)
+    }
+
+    /** `"contactId:eraId"` — the AAD and storage key for a remembered wrap. */
+    private suspend fun biometricContactKeyFor(contactId: ContactId): String? {
+        val eraId = messageCipher.currentEraId(contactId)?.value ?: return null
+        return "${contactId.value}:$eraId"
+    }
+
+    // ------------------------------------------------------------ clipboard
 
     /**
      * Clipboard entry point (spec 004): reads the current clip through the
@@ -235,24 +395,30 @@ class CompanionViewModel @Inject constructor(
                         startDecryptFlow(parsed.text, TextSource.CLIPBOARD, readOnly = true)
                     }
                 ProcessTextContract.SelectedText.Empty -> clipboardNotice(
-                    "The clipboard text is empty (blank). Copy the text, then tap Try again.",
+                    UiNotice(R.string.notice_clipboard_blank),
                 )
                 is ProcessTextContract.SelectedText.Oversized -> clipboardNotice(
-                    "The clipboard text is longer than ${parsed.limitBytes / 1024} KiB and cannot be processed as one message.",
+                    UiNotice(
+                        R.string.notice_input_too_long,
+                        "${parsed.limitBytes / 1024}",
+                    ),
                     retryable = false,
                 )
             }
             ClipboardRead.Empty -> clipboardNotice(
-                "The clipboard is empty. Copy the text first, then tap Try again.",
+                UiNotice(R.string.notice_clipboard_empty),
             )
             is ClipboardRead.NonText -> clipboardNotice(
-                "The clipboard contains non-text content (${clip.mimeType ?: "unknown type"}). " +
-                    "CipherKey can only process text — copy text, then tap Try again.",
+                UiNotice(
+                    R.string.notice_clipboard_nontext,
+                    clip.mimeType ?: "unknown type",
+                ),
             )
             is ClipboardRead.Blocked -> clipboardNotice(
-                "Android blocked clipboard access" +
-                    (clip.reason?.let { " ($it)" } ?: "") +
-                    ". Tap Try again while CipherKey is in the foreground.",
+                UiNotice(
+                    R.string.notice_clipboard_blocked,
+                    clip.reason,
+                ),
             )
         }
     }
@@ -297,7 +463,7 @@ class CompanionViewModel @Inject constructor(
                 unlocked = unlocked,
                 selectedContactId = selected,
                 notice = if (contacts.isEmpty()) {
-                    "No contacts yet. Open CipherKey and create a contact with a shared passphrase first."
+                    UiNotice(R.string.notice_no_contacts)
                 } else null,
             )
         }
@@ -317,12 +483,12 @@ class CompanionViewModel @Inject constructor(
     }
 
     /** Clipboard-outcome notice without re-checking the begun flag. */
-    private fun clipboardNotice(message: String, retryable: Boolean = true) {
+    private fun clipboardNotice(notice: UiNotice, retryable: Boolean = true) {
         _state.value = CompanionUiState(
             mode = _state.value.mode,
             source = TextSource.CLIPBOARD,
             phase = CompanionUiState.Phase.Notice,
-            notice = message,
+            notice = notice,
             retryable = retryable,
         )
     }
@@ -342,26 +508,26 @@ class CompanionViewModel @Inject constructor(
                 pendingContactId = out.contactId,
                 pendingContactName = out.contactName,
                 busy = false,
-            )
+            ).also { refreshBiometricOffer() }
             DecryptOutcome.NotAnEnvelope -> _state.value = _state.value.copy(
                 phase = CompanionUiState.Phase.Notice,
                 busy = false,
-                notice = "This text is not a CK1 encrypted message. Select the whole \"CK1:…\" message and try again.",
+                notice = UiNotice(R.string.notice_not_envelope),
             )
             DecryptOutcome.UnknownKey -> _state.value = _state.value.copy(
                 phase = CompanionUiState.Phase.Notice,
                 busy = false,
-                notice = "The key for this message is not on this device. Import the contact's invite code first.",
+                notice = UiNotice(R.string.notice_unknown_key),
             )
             DecryptOutcome.StaleKeyEra -> _state.value = _state.value.copy(
                 phase = CompanionUiState.Phase.Notice,
                 busy = false,
-                notice = "This message was encrypted under an older key era that this version cannot decrypt (v0.2 limitation).",
+                notice = UiNotice(R.string.notice_stale_era),
             )
             is DecryptOutcome.Failed -> _state.value = _state.value.copy(
                 phase = CompanionUiState.Phase.Notice,
                 busy = false,
-                notice = "Decryption failed — the message is corrupted or was tampered with.",
+                notice = UiNotice(R.string.notice_decrypt_failed),
             )
         }
     }
@@ -371,6 +537,7 @@ class CompanionViewModel @Inject constructor(
         passphrase: CharArray,
         andThen: suspend () -> Unit,
     ) {
+        afterUnlock = andThen
         launchSafely {
             try {
                 _state.value = _state.value.copy(busy = true, notice = null)
@@ -381,22 +548,26 @@ class CompanionViewModel @Inject constructor(
                             unlocked = _state.value.unlocked + contactId,
                         )
                         andThen()
+                        // v0.3.0: right after a passphrase unlock, offer to
+                        // remember the key behind the fingerprint.
+                        lastUnlockedContactId = contactId
+                        offerRemember(contactId)
                     }
                     UnlockOutcome.WrongPassphrase -> _state.value = _state.value.copy(
                         busy = false,
-                        notice = "Wrong passphrase.",
+                        notice = UiNotice(R.string.notice_wrong_passphrase),
                     )
                     UnlockOutcome.NoSession -> _state.value = _state.value.copy(
                         busy = false,
-                        notice = "This contact has no key era yet. Create or import one in the app first.",
+                        notice = UiNotice(R.string.notice_no_era),
                     )
                     is UnlockOutcome.Rejected -> _state.value = _state.value.copy(
                         busy = false,
-                        notice = "Passphrase rejected: ${outcome.reason}",
+                        notice = UiNotice(R.string.notice_passphrase_rejected, outcome.reason),
                     )
                     is UnlockOutcome.Failed -> _state.value = _state.value.copy(
                         busy = false,
-                        notice = "Unlock failed: ${outcome.reason}",
+                        notice = UiNotice(R.string.notice_unlock_failed, outcome.reason),
                     )
                 }
             } finally {
@@ -421,7 +592,10 @@ class CompanionViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     busy = false,
-                    notice = "Unexpected error: ${e.message ?: e.javaClass.simpleName}",
+                    notice = UiNotice(
+                        R.string.notice_unexpected_error,
+                        e.message ?: e.javaClass.simpleName,
+                    ),
                 )
             }
         }

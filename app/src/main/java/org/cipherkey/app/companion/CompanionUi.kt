@@ -25,26 +25,33 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.cipherkey.app.R
+import org.cipherkey.app.security.rememberBiometricPromptHelper
+import org.cipherkey.app.security.BiometricPromptHost
 import org.cipherkey.core.common.ContactId
 
 /**
  * Compact utility sheet shared by all three companion entry activities.
  * Deliberately plain: one column, Material3, no navigation — every flow is
  * at most two steps (prepare/unlock → result).
+ *
+ * v0.3.0: hosts the system fingerprint prompt — [onBiometricUnlock] and
+ * [onRememberKey] route the prompt outcomes back into the ViewModel.
  */
 @Composable
 fun CompanionSheet(
@@ -57,7 +64,24 @@ fun CompanionSheet(
     onInsert: () -> Unit,
     onClose: () -> Unit,
     onRetryClipboard: (() -> Unit)? = null,
+    biometrics: org.cipherkey.app.security.BiometricKeyStore? = null,
+    onRequestBiometricUnlock: () -> Unit = {},
+    onBiometricUnlock: (ByteArray?) -> Unit = {},
+    loadRememberKey: (suspend () -> ByteArray?)? = null,
+    onRememberDone: (Boolean) -> Unit = {},
 ) {
+    val promptHelper = biometrics?.let { rememberBiometricPromptHelper(it) }
+
+    // The Remember prompt's key export is awaited INSIDE the host's effect
+    // (deep-scan F1) — never pre-loaded into composition state.
+    BiometricPromptHost(
+        helper = promptHelper,
+        request = state.biometricPrompt,
+        loadRememberKey = loadRememberKey,
+        onUnlock = onBiometricUnlock,
+        onRememberDone = onRememberDone,
+    )
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -82,7 +106,7 @@ fun CompanionSheet(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     CircularProgressIndicator()
-                    Text("Reading the clipboard…", fontSize = 14.sp)
+                    Text(stringResource(R.string.reading_clipboard), fontSize = 14.sp)
                 }
             } else Unit
 
@@ -97,12 +121,16 @@ fun CompanionSheet(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         CircularProgressIndicator()
-                        Text("Decrypting…", fontSize = 14.sp)
+                        Text(stringResource(R.string.decrypting), fontSize = 14.sp)
                     }
                 }
 
             CompanionUiState.Phase.NeedsUnlock ->
-                UnlockCard(state, onUnlockDecrypt)
+                UnlockCard(
+                    state = state,
+                    onUnlockDecrypt = onUnlockDecrypt,
+                    onUseFingerprint = onRequestBiometricUnlock,
+                )
 
             CompanionUiState.Phase.Result ->
                 ResultCard(state, onCopy, onInsert, onClose)
@@ -117,11 +145,7 @@ fun CompanionSheet(
         // Result), e.g. "Wrong passphrase." under the unlock card.
         if (state.phase != CompanionUiState.Phase.Notice) {
             state.notice?.let { notice ->
-                Text(
-                    text = notice,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.error,
-                )
+                NoticeText(notice)
             }
         }
 
@@ -129,23 +153,36 @@ fun CompanionSheet(
     }
 }
 
+/** Renders a typed notice in the current locale (v0.3.0). */
+@Composable
+fun NoticeText(notice: UiNotice) {
+    val text = notice.arg?.let { arg ->
+        stringResource(notice.res, arg)
+    } ?: stringResource(notice.res)
+    Text(
+        text = text,
+        fontSize = 13.sp,
+        color = MaterialTheme.colorScheme.error,
+    )
+}
+
 @Composable
 private fun SheetHeader(state: CompanionUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             text = if (state.mode == CompanionMode.ENCRYPT) {
-                "Encrypt"
+                stringResource(R.string.sheet_encrypt)
             } else {
-                "Decrypt"
+                stringResource(R.string.sheet_decrypt)
             },
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
         )
         Text(
             text = when (state.source) {
-                TextSource.SELECTION -> "From text selection"
-                TextSource.SHARE -> "From share"
-                TextSource.CLIPBOARD -> "From clipboard"
+                TextSource.SELECTION -> stringResource(R.string.sheet_from_selection)
+                TextSource.SHARE -> stringResource(R.string.sheet_from_share)
+                TextSource.CLIPBOARD -> stringResource(R.string.sheet_from_clipboard)
             } + "  ·  CipherKey",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -161,7 +198,11 @@ private fun EncryptPrepareCard(
     onUnlockEncrypt: (CharArray) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Draft", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            stringResource(R.string.draft_label),
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Text(
             text = state.incoming ?: "",
             fontSize = 15.sp,
@@ -182,8 +223,11 @@ private fun EncryptPrepareCard(
 
         if (state.selectedContactId != null && !state.selectedContactUnlocked) {
             PassphraseField(
-                label = "Passphrase for ${state.selectedContact?.displayName ?: "contact"}",
-                buttonLabel = "Unlock & Encrypt",
+                label = stringResource(
+                    R.string.passphrase_for,
+                    state.selectedContact?.displayName ?: "",
+                ),
+                buttonLabel = stringResource(R.string.unlock_encrypt_action),
                 busy = state.busy,
                 onSubmit = onUnlockEncrypt,
             )
@@ -192,12 +236,12 @@ private fun EncryptPrepareCard(
                 onClick = onEncrypt,
                 enabled = state.selectedContactId != null && !state.busy,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Encrypt") }
+            ) { Text(stringResource(R.string.encrypt_action)) }
         }
 
         if (state.selectedContactUnlocked) {
             Text(
-                "Session unlocked — one tap.",
+                stringResource(R.string.session_unlocked_hint),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -221,10 +265,10 @@ private fun ContactDropdown(
         onExpandedChange = { expanded = it },
     ) {
         TextField(
-            value = selected?.displayName ?: "Choose contact",
+            value = selected?.displayName ?: stringResource(R.string.contact_choose),
             onValueChange = {},
             readOnly = true,
-            label = { Text("Encrypt for") },
+            label = { Text(stringResource(R.string.encrypt_contact_label)) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
                 .fillMaxWidth()
@@ -255,24 +299,33 @@ private fun ContactDropdown(
 private fun UnlockCard(
     state: CompanionUiState,
     onUnlockDecrypt: (CharArray) -> Unit,
+    onUseFingerprint: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            "Message from ${state.pendingContactName ?: "contact"}",
+            stringResource(R.string.message_from, state.pendingContactName ?: ""),
             fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
         )
         Text(
-            "This contact's session is locked. Enter the shared passphrase to decrypt.",
+            stringResource(R.string.locked_hint),
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         PassphraseField(
-            label = "Passphrase",
-            buttonLabel = "Unlock & Decrypt",
+            label = stringResource(R.string.passphrase_label),
+            buttonLabel = stringResource(R.string.unlock_decrypt_action),
             busy = state.busy,
             onSubmit = onUnlockDecrypt,
         )
+        // v0.3.0: remembered fingerprint wrap for this contact's era.
+        if (state.biometricOffered) {
+            OutlinedButton(
+                onClick = onUseFingerprint,
+                enabled = !state.busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(stringResource(R.string.use_fingerprint)) }
+        }
     }
 }
 
@@ -323,9 +376,15 @@ private fun ResultCard(
         Text(
             text = when (state.mode) {
                 CompanionMode.ENCRYPT ->
-                    "Encrypted for ${state.resultContactName ?: "contact"}"
+                    stringResource(
+                        R.string.result_encrypted_for,
+                        state.resultContactName ?: "",
+                    )
                 CompanionMode.DECRYPT ->
-                    "Decrypted — from ${state.resultContactName ?: "contact"}"
+                    stringResource(
+                        R.string.result_decrypted_from,
+                        state.resultContactName ?: "",
+                    )
             },
             fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
@@ -348,7 +407,7 @@ private fun ResultCard(
 
         if (state.mode == CompanionMode.ENCRYPT) {
             Text(
-                "The full envelope is returned to the field — this preview is truncated.",
+                stringResource(R.string.envelope_truncated_hint),
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -356,32 +415,30 @@ private fun ResultCard(
 
         if (state.copied) {
             Text(
-                "Copied to clipboard ✓",
+                stringResource(R.string.notice_copied),
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.primary,
             )
         }
 
-        val canInsert = state.mode == CompanionMode.ENCRYPT &&
-            state.source == TextSource.SELECTION && !state.readOnly
-
-        if (canInsert) {
+        // v0.3.0: insert works for decrypt-from-selection too now.
+        if (state.insertable) {
             Button(
                 onClick = onInsert,
                 enabled = !state.busy,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Replace in field") }
+            ) { Text(stringResource(R.string.replace_in_field)) }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedButton(
                 onClick = onCopy,
                 modifier = Modifier.weight(1f),
-            ) { Text("Copy") }
+            ) { Text(stringResource(R.string.action_copy)) }
             OutlinedButton(
                 onClick = onClose,
                 modifier = Modifier.weight(1f),
-            ) { Text("Done") }
+            ) { Text(stringResource(R.string.action_done)) }
         }
     }
 }
@@ -396,17 +453,14 @@ private fun NoticeCard(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         modifier = Modifier.padding(vertical = 24.dp),
     ) {
-        Text(
-            text = state.notice ?: "Nothing to do.",
-            fontSize = 15.sp,
-        )
+        state.notice?.let { NoticeText(it) }
         if (state.retryable && onRetryClipboard != null) {
             Button(onClick = onRetryClipboard, modifier = Modifier.fillMaxWidth()) {
-                Text("Try again")
+                Text(stringResource(R.string.try_again))
             }
         }
         Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
-            Text("Close")
+            Text(stringResource(R.string.close))
         }
     }
 }

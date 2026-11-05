@@ -2,6 +2,7 @@ package org.cipherkey.app.companion
 
 import android.content.Intent
 import dagger.hilt.android.AndroidEntryPoint
+import org.cipherkey.app.R
 import org.cipherkey.app.companion.ProcessTextContract.SelectedText
 
 /**
@@ -44,10 +45,10 @@ class EncryptActivity : BaseCompanionActivity() {
                     readOnly = readOnly,
                 )
             SelectedText.Empty -> showNotice(
-                "No text was selected. Select the draft text and try again.",
+                UiNotice(R.string.notice_no_selection_encrypt),
             )
             is SelectedText.Oversized -> showNotice(
-                "The selected text is longer than ${parsed.limitBytes / 1024} KiB and cannot be encrypted as one message.",
+                UiNotice(R.string.notice_oversized_encrypt, "${parsed.limitBytes / 1024}"),
             )
         }
     }

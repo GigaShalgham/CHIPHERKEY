@@ -1,41 +1,78 @@
 package org.cipherkey.app
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.viewModels
-import androidx.compose.runtime.getValue
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import org.cipherkey.app.assistant.AssistantReadiness
+import org.cipherkey.app.assistant.FloatingAssistantService
+import org.cipherkey.app.security.BiometricKeyStore
 import org.cipherkey.app.ui.CipherKeyApp
 import org.cipherkey.app.ui.theme.CipherKeyTheme
+import org.cipherkey.data.preferences.SettingsRepository
+import android.provider.Settings as AndroidSettings
 
 /**
- * Single-activity host for all CipherKey management UI (status/onboarding,
- * contacts and key sharing, security settings).
+ * The app-wide fingerprint key store, provided to the Compose tree so the
+ * tools screens can host the system biometric prompt (v0.3.0).
+ */
+val LocalBiometrics = staticCompositionLocalOf<BiometricKeyStore> {
+    error("BiometricKeyStore not provided")
+}
+
+/**
+ * Single-activity host for all CipherKey management UI (status, tools,
+ * contacts and security settings).
+ *
+ * v0.3.0: extends [FragmentActivity] because the system BiometricPrompt
+ * (fingerprint unlock / remember) requires a FragmentActivity host.
  */
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
-    private val mainViewModel: MainViewModel by viewModels()
-    private val contactsViewModel: ContactsViewModel by viewModels()
-    private val settingsViewModel: SettingsViewModel by viewModels()
+    @Inject
+    lateinit var biometrics: BiometricKeyStore
+
+    @Inject
+    lateinit var settingsRepository: SettingsRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            CipherKeyTheme {
-                CipherKeyApp(
-                    mainViewModel = mainViewModel,
-                    contactsViewModel = contactsViewModel,
-                    settingsViewModel = settingsViewModel,
-                )
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalBiometrics provides biometrics,
+            ) {
+                CipherKeyTheme {
+                    CipherKeyApp()
+                }
             }
         }
+        maybeAutoStartAssistant()
     }
 
-    override fun onResume() {
-        super.onResume()
-        mainViewModel.refresh()
+    /**
+     * v0.3.0: if the user enabled the floating assistant and the overlay
+     * permission is granted, the bubble comes back on every launch.
+     * Missing permission never crashes — Settings explains how to grant it.
+     */
+    private fun maybeAutoStartAssistant() {
+        lifecycleScope.launch {
+            runCatching {
+                val settings = settingsRepository.settings.first()
+                if (AssistantReadiness.shouldAutoStart(
+                        enabled = settings.assistantEnabled,
+                        overlayGranted = AndroidSettings.canDrawOverlays(this@MainActivity),
+                    )
+                ) {
+                    FloatingAssistantService.start(this@MainActivity)
+                }
+            }
+        }
     }
 }
