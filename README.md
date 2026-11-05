@@ -43,8 +43,8 @@ When an app's selection toolbar is unavailable, the Home screen offers an
 | v0.3.0-alpha (floating assistant, fingerprint unlock, in-app tools) | ✅ re-implemented on `main` (spec 005, recovered from the signed release APK; see CHANGELOG) |
 
 See `ENGINEERING_REPORT.md` (v0.1 history), `docs/DEEP-SCAN-2026-11-05.md`
-(the full audit) and `CHANGELOG.md` for engineering status and known
-limitations.
+and `docs/DEEP-SCAN-2026-11-06.md` (the v0.4.0 audit), and `CHANGELOG.md`
+for engineering status and known limitations.
 
 ## Building
 
