@@ -8,16 +8,21 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * v0.4.1: complete Material 3 color schemes. v0.3.0 set a handful of roles
- * and left the rest on the baseline purple defaults, which clashed with the
- * blue primary. Every container / on-color is now declared, and the shape
- * system got rounder (24dp cards, 32dp dialogs) for a calmer look.
+ * v0.5.0 theme ("Calm Vault", docs/DESIGN.md): the v0.4 color schemes
+ * completed with the full Material 3 role set, plus the SUCCESS semantic
+ * extension exposed through [LocalSemanticColors].
+ *
+ * Deliberately NO dynamic color: wallpaper-derived schemes re-tint every
+ * role, which would re-tint the security-state semantics with them. A
+ * security tool keeps its state colors constant by design.
  */
 private val DarkColors = darkColorScheme(
     primary = DarkPrimary,
@@ -43,6 +48,19 @@ private val DarkColors = darkColorScheme(
     surfaceVariant = DarkSurfaceVariant,
     onSurfaceVariant = DarkOnSurfaceVariant,
     outline = DarkOutline,
+    outlineVariant = DarkOutlineVariant,
+    surfaceContainerLowest = DarkSurfaceContainerLowest,
+    surfaceContainerLow = DarkSurfaceContainerLow,
+    surfaceContainer = DarkSurfaceContainer,
+    surfaceContainerHigh = DarkSurfaceContainerHigh,
+    surfaceContainerHighest = DarkSurfaceContainerHighest,
+    surfaceDim = DarkSurfaceDim,
+    surfaceBright = DarkSurfaceBright,
+    inverseSurface = DarkInverseSurface,
+    inverseOnSurface = DarkInverseOnSurface,
+    inversePrimary = DarkInversePrimary,
+    scrim = DarkScrim,
+    surfaceTint = DarkPrimary,
 )
 
 private val LightColors = lightColorScheme(
@@ -69,7 +87,26 @@ private val LightColors = lightColorScheme(
     surfaceVariant = LightSurfaceVariant,
     onSurfaceVariant = LightOnSurfaceVariant,
     outline = LightOutline,
+    outlineVariant = LightOutlineVariant,
+    surfaceContainerLowest = LightSurfaceContainerLowest,
+    surfaceContainerLow = LightSurfaceContainerLow,
+    surfaceContainer = LightSurfaceContainer,
+    surfaceContainerHigh = LightSurfaceContainerHigh,
+    surfaceContainerHighest = LightSurfaceContainerHighest,
+    surfaceDim = LightSurfaceDim,
+    surfaceBright = LightSurfaceBright,
+    inverseSurface = LightInverseSurface,
+    inverseOnSurface = LightInverseOnSurface,
+    inversePrimary = LightInversePrimary,
+    scrim = LightScrim,
+    surfaceTint = LightPrimary,
 )
+
+/**
+ * The v0.5 semantic extension (success tone). Read via
+ * `LocalSemanticColors.current`; provided by [CipherKeyTheme].
+ */
+val LocalSemanticColors = staticCompositionLocalOf { LightSemantic }
 
 private val AppShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
@@ -80,11 +117,10 @@ private val AppShapes = Shapes(
 )
 
 /**
- * v0.4.2 (deep-scan): a deliberate type scale. Screens were (and mostly
- * still are) driving emphasis with ad-hoc `fontSize = N.sp` + FontWeight
- * params; centralizing the scale here gives every screen the same titles,
- * body and label weights, and removes the default Roboto Medium-everything
- * look without adding a font dependency.
+ * The v0.4.2 deliberate type scale, kept and now used everywhere — screens
+ * no longer drive emphasis with ad-hoc fontSize values. labelLarge is the
+ * button/CTA style; titleMedium (with an optional leading icon) titles
+ * every section card.
  */
 private val AppTypography = Typography(
     headlineMedium = TextStyle(
@@ -147,6 +183,11 @@ fun CipherKeyTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
         typography = AppTypography,
         shapes = AppShapes,
-        content = content,
-    )
+    ) {
+        CompositionLocalProvider(
+            LocalSemanticColors provides if (darkTheme) DarkSemantic else LightSemantic,
+        ) {
+            content()
+        }
+    }
 }

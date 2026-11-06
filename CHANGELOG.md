@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0-alpha] - 2026-11-06 — the "Calm Vault" redesign + messenger fallback shortcuts
+
+### Added
+
+- **Design research + the v0.5 design language** (`docs/DESIGN.md`): a full
+  audit of the v0.4 UI against the Material 3 role system, dark-theme
+  guidance, vault-app precedents and NN/g empty-state / progressive-
+  disclosure research, distilled into the "Calm Vault" system — implemented
+  across every screen.
+- **Launcher app shortcuts (zero permissions)**: long-press the CipherKey
+  icon for **Encrypt clipboard** / **Decrypt clipboard**. This is the
+  universal fallback for messengers whose text-selection menu hosts no
+  third-party entries — Telegram's message bubbles (and WhatsApp's) draw
+  their own menu, so the selection-toolbar entry can never appear there;
+  the recommended flow becomes copy → long-press CipherKey → Decrypt
+  clipboard. Documented honestly with sources in `docs/COMPATIBILITY.md`.
+- Settings gains a **Features** section; the empty Contacts screen gains a
+  direct **Add contact** call to action (NN/g empty-state guidance).
+
+### Changed — the v0.5 design system
+
+- **Color**: the full Material 3 role set is now declared (the
+  surface-container tier, inverse roles, `outlineVariant`, `scrim`,
+  `surfaceTint`); grouped surfaces are tonal instead of bordered. A
+  **SUCCESS semantic extension** (green) becomes the dedicated
+  "unlocked/secure" channel — the vault-app pattern — so the brand indigo
+  never has to mean two things. No dynamic color, by design: state colors
+  stay constant.
+- **Components**: `SectionCard` is tonal with an optional leading icon;
+  `StatusChip` is a pill with a leading state icon (readable without
+  color); `QuickActionTile` is an 88dp tile with a 40dp icon circle (was a
+  40dp outlined button row); `EmptyState` gained a CTA; `NoticeBanner`
+  gained INFO/SUCCESS/WARNING/ERROR tones so confirmations stop reading as
+  errors; new labeled `SettingSwitchRow` (the old row showed the literal
+  text "On"/"Off" next to the switch); new `ContactAvatar`; `ResultBlock`
+  renders on a tonal inset.
+- **Screens**: Home (brand header, status card, 2×2 action grid — still no
+  tutorial walls), Contacts (avatar cards, extended FAB, success-tone
+  feedback), Settings (four titled sections, prominent error-toned "Lock
+  all sessions now"), Encrypt/Decrypt (same flows, restyled; the ad-hoc
+  `fontSize` emphasis is gone), ContactPicker (lock-state icons instead of
+  prepended words).
+- **Passphrase strength**: STRONG now renders in the success green (FAIR
+  keeps the warm ochre, WEAK stays red).
+
+### Security
+
+- No new permission, no network code, no schema or wire change. The
+  shortcuts route through the existing audited clipboard companion flows
+  (focus-deferred read, `ClipboardAccess` chokepoint, `FLAG_SECURE`,
+  `noHistory`).
+
 ## [0.4.2] - 2026-11-06 — first stable release
 
 Promoted from the 0.4.2-alpha candidate: identical features and fixes, no

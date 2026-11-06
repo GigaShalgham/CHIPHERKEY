@@ -8,12 +8,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -23,9 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,13 +36,15 @@ import org.cipherkey.app.R
 import org.cipherkey.app.SettingsEvent
 import org.cipherkey.app.SettingsViewModel
 import org.cipherkey.app.security.BiometricGate
+import org.cipherkey.app.companion.UiNotice
 import org.cipherkey.security.policies.Argon2Profile
 import org.cipherkey.security.policies.KeyPolicy
 
 /**
- * Settings (v0.3.0): unlock & security section (timeout picker, fingerprint
- * unlock, floating assistant, lock-all), key-derivation strength, and the
- * About card. Strings come from resources; every row states its trade-off.
+ * Settings (v0.5, "Calm Vault"): four titled sections — Session & security,
+ * Features, Key derivation, About — with labeled switch rows and a
+ * prominent error-toned "Lock all sessions now" button. Every row still
+ * states its trade-off; strings come from resources.
  */
 @Composable
 fun SettingsScreen(
@@ -88,25 +90,29 @@ fun SettingsScreen(
         Text(
             stringResource(R.string.settings_title),
             style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
         )
 
-        // ------------------------------------------------ unlock & security
+        // ------------------------------------------------ session & security
 
-        SectionCard(title = stringResource(R.string.settings_unlock_section)) {
+        SectionCard(
+            title = stringResource(R.string.settings_unlock_section),
+            icon = CipherKeyIcons.Timer,
+        ) {
             Text(
                 stringResource(R.string.settings_timeout_title),
                 style = MaterialTheme.typography.titleSmall,
             )
             Text(
                 stringResource(R.string.settings_timeout_summary),
-                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             KeyPolicy.TIMEOUT_CHOICES_MILLIS.forEach { choice ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 40.dp),
                 ) {
                     RadioButton(
                         selected = settings.sessionTimeoutMillis == choice,
@@ -124,38 +130,47 @@ fun SettingsScreen(
                                 (choice / 60_000L).toInt(),
                             )
                         },
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                 }
             }
-            TextButton(onClick = { contactsViewModel.lockAll() }) {
-                Text(stringResource(R.string.lock_now))
-            }
+            // v0.5: a full-width error-toned button — "lock everything"
+            // is the one destructive-ish action on this screen and used
+            // to be a quiet text link.
+            Button(
+                onClick = { contactsViewModel.lockAll() },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+            ) { Text(stringResource(R.string.lock_now)) }
+        }
 
+        // ------------------------------------------------------- features
+
+        SectionCard(
+            title = stringResource(R.string.settings_features_section),
+            icon = CipherKeyIcons.Shield,
+        ) {
             // --------------------------------------- fingerprint unlock
 
-            Text(
-                stringResource(R.string.settings_biometric_title),
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Text(
-                stringResource(R.string.settings_biometric_summary),
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             // v0.4.1 CI fix: a local copy enables the null/AVAILABLE checks —
             // smart casts are impossible on delegated properties.
             val gate = biometricGate
             if (gate != null && gate != BiometricGate.AVAILABLE) {
                 // v0.4.1: the honest reason per failure — the v0.4.0 row
                 // guessed "No fingerprint enrolled" for every case.
-                Text(
-                    stringResource(biometricReasonRes(gate)),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.error,
+                NoticeBanner(
+                    UiNotice(biometricReasonRes(gate)),
+                    NoticeTone.WARNING,
                 )
             }
-            SwitchRow(
+            SettingSwitchRow(
+                title = stringResource(R.string.settings_biometric_title),
+                subtitle = stringResource(R.string.settings_biometric_summary),
                 checked = settings.biometricUnlockEnabled && gate == BiometricGate.AVAILABLE,
                 enabled = gate == BiometricGate.AVAILABLE,
                 onCheckedChange = viewModel::setBiometricEnabled,
@@ -163,23 +178,15 @@ fun SettingsScreen(
 
             // --------------------------------------- floating assistant
 
-            Text(
-                stringResource(R.string.settings_assistant_title),
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Text(
-                stringResource(R.string.settings_assistant_summary),
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             if (!overlayGranted) {
-                Text(
-                    stringResource(R.string.settings_assistant_needs_overlay),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.error,
+                NoticeBanner(
+                    UiNotice(R.string.settings_assistant_needs_overlay),
+                    NoticeTone.INFO,
                 )
             }
-            SwitchRow(
+            SettingSwitchRow(
+                title = stringResource(R.string.settings_assistant_title),
+                subtitle = stringResource(R.string.settings_assistant_summary),
                 checked = settings.assistantEnabled,
                 enabled = true,
                 onCheckedChange = viewModel::setAssistantEnabled,
@@ -198,16 +205,21 @@ fun SettingsScreen(
 
         // ------------------------------------------------ KDF strength
 
-        SectionCard(title = stringResource(R.string.settings_kdf_title)) {
+        SectionCard(
+            title = stringResource(R.string.settings_kdf_title),
+            icon = CipherKeyIcons.Key,
+        ) {
             Text(
                 stringResource(R.string.settings_kdf_summary),
-                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Argon2Profile.entries.forEach { profile ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 40.dp),
                 ) {
                     RadioButton(
                         selected = settings.argon2Profile == profile,
@@ -216,7 +228,7 @@ fun SettingsScreen(
                     Column {
                         Text(
                             profile.name.lowercase().replaceFirstChar { it.uppercase() },
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                         )
                         Text(
                             stringResource(
@@ -224,7 +236,7 @@ fun SettingsScreen(
                                 profile.params.memoryKib / 1024,
                                 profile.params.iterations,
                             ),
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -234,16 +246,22 @@ fun SettingsScreen(
 
         // ------------------------------------------------ about
 
-        SectionCard(title = stringResource(R.string.settings_about_title)) {
+        SectionCard(
+            title = stringResource(R.string.settings_about_title),
+            icon = CipherKeyIcons.Info,
+        ) {
             // Deep-scan finding 7: the version comes from the build itself.
             Text(
                 stringResource(R.string.settings_about_version, BuildConfig.VERSION_NAME),
-                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodyMedium,
             )
-            Text(stringResource(R.string.settings_about_line2), fontSize = 13.sp)
+            Text(
+                stringResource(R.string.settings_about_line2),
+                style = MaterialTheme.typography.bodyMedium,
+            )
             Text(
                 stringResource(R.string.settings_about_line3),
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -258,23 +276,4 @@ private fun biometricReasonRes(gate: BiometricGate): Int = when (gate) {
     BiometricGate.SECURITY_UPDATE -> R.string.biometric_reason_security_update
     BiometricGate.NOT_STRONG -> R.string.biometric_reason_not_strong
     BiometricGate.AVAILABLE -> R.string.settings_biometric_summary
-}
-
-@Composable
-private fun SwitchRow(
-    checked: Boolean,
-    enabled: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(
-            if (checked) stringResource(R.string.state_on) else stringResource(R.string.state_off),
-            fontSize = 14.sp,
-            modifier = Modifier.weight(1f),
-        )
-        Switch(checked = checked, enabled = enabled, onCheckedChange = onCheckedChange)
-    }
 }

@@ -17,6 +17,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -97,16 +99,14 @@ fun ContactsScreen(viewModel: ContactsViewModel, biometrics: BiometricKeyStore) 
 
     Scaffold(
         floatingActionButton = {
-            TextButton(
+            // v0.5: a real extended FAB (icon + label) — the v0.3–v0.4
+            // pseudo-FAB was a bare TextButton that read as a list action.
+            ExtendedFloatingActionButton(
+                text = { Text(stringResource(R.string.contacts_add_contact)) },
+                icon = { Icon(CipherKeyIcons.Add, contentDescription = null) },
                 onClick = { showAddDialog = true },
-                modifier = Modifier.padding(end = 8.dp, bottom = 8.dp),
-            ) {
-                Text(
-                    stringResource(R.string.contacts_add),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
+                modifier = Modifier.padding(end = 12.dp, bottom = 12.dp),
+            )
         },
     ) { padding ->
         Column(
@@ -121,21 +121,19 @@ fun ContactsScreen(viewModel: ContactsViewModel, biometrics: BiometricKeyStore) 
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(vertical = 12.dp),
             )
+            // v0.5: typed feedback renders as a SUCCESS banner (created /
+            // deleted confirmations used to sit in a primary-colored line
+            // that looked like every error).
             feedback?.let { notice ->
-                val text = notice.arg?.let { stringResource(notice.res, it) }
-                    ?: stringResource(notice.res)
-                Text(
-                    text = text,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(bottom = 8.dp),
-                )
+                NoticeBanner(notice, NoticeTone.SUCCESS)
             }
             if (contacts.isEmpty()) {
                 EmptyState(
                     icon = CipherKeyIcons.People,
                     title = stringResource(R.string.contacts_empty_title),
                     body = stringResource(R.string.contacts_empty_body),
+                    actionLabel = stringResource(R.string.contacts_add_contact),
+                    onAction = { showAddDialog = true },
                     modifier = Modifier.padding(top = 16.dp),
                 )
             } else {
@@ -200,6 +198,11 @@ fun ContactsScreen(viewModel: ContactsViewModel, biometrics: BiometricKeyStore) 
     }
 }
 
+/**
+ * v0.5: avatar card — the contact's initial on a tonal circle (green when
+ * unlocked), name + era line, and a leading-icon state pill at the end.
+ * Grouping is tonal (surfaceContainerLow), consistent with SectionCard.
+ */
 @Composable
 private fun ContactCard(
     contact: Contact,
@@ -210,19 +213,17 @@ private fun ContactCard(
     Card(
         onClick = onClick,
         colors = CardDefaults.cardColors(
-            containerColor = if (unlocked) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            ContactAvatar(name = contact.displayName, unlocked = unlocked)
             Column(modifier = Modifier.weight(1f)) {
                 Text(contact.displayName, style = MaterialTheme.typography.titleMedium)
                 Text(
@@ -235,17 +236,13 @@ private fun ContactCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Text(
+            StatusChip(
                 text = stringResource(
                     if (unlocked) R.string.contact_state_unlocked
                     else R.string.contact_state_locked,
                 ),
-                style = MaterialTheme.typography.labelMedium,
-                color = if (unlocked) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
+                positive = unlocked,
+                icon = if (unlocked) CipherKeyIcons.LockOpen else CipherKeyIcons.Lock,
             )
         }
     }

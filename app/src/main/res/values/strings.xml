@@ -214,4 +214,17 @@
     <string name="passphrase_strength_fair">fair — could be stronger</string>
     <string name="passphrase_strength_strong">strong</string>
     <string name="passphrase_strength_summary">Strength: %1$s · ≈ %2$d bits</string>
+
+    <!-- v0.5.0: contacts FAB / empty-state CTA (was "+ Add contact" text button). -->
+    <string name="contacts_add_contact">Add contact</string>
+
+    <!-- v0.5.0: Settings "Features" section (biometric unlock + assistant). -->
+    <string name="settings_features_section">Features</string>
+
+    <!-- v0.5.0: launcher app shortcuts (docs/COMPATIBILITY.md) — the
+         selection-toolbar fallback that works in every messenger. -->
+    <string name="shortcut_encrypt_short">Encrypt</string>
+    <string name="shortcut_encrypt_long">Encrypt clipboard</string>
+    <string name="shortcut_decrypt_short">Decrypt</string>
+    <string name="shortcut_decrypt_long">Decrypt clipboard</string>
 </resources>

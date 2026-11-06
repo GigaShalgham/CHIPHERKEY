@@ -82,7 +82,10 @@ fun EncryptScreen(
                 body = stringResource(R.string.contacts_empty_body),
             )
         } else {
-            SectionCard(title = stringResource(R.string.tools_input_label)) {
+            SectionCard(
+                title = stringResource(R.string.tools_input_label),
+                icon = CipherKeyIcons.Lock,
+            ) {
                 OutlinedTextField(
                     value = input,
                     onValueChange = { input = it },
@@ -99,7 +102,10 @@ fun EncryptScreen(
                 }
             }
 
-            SectionCard(title = stringResource(R.string.encrypt_contact_label)) {
+            SectionCard(
+                title = stringResource(R.string.encrypt_contact_label),
+                icon = CipherKeyIcons.People,
+            ) {
                 ContactPicker(
                     contacts = state.contacts,
                     selectedContactId = state.selectedContactId,
@@ -140,7 +146,7 @@ fun EncryptScreen(
                 )
                 Text(
                     stringResource(R.string.envelope_truncated_hint),
-                    fontSize = 11.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -160,7 +166,7 @@ private fun UnlockCard(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             stringResource(R.string.locked_hint),
-            fontSize = 13.sp,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         PassphraseInput(

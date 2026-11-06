@@ -39,6 +39,11 @@ When an app's selection toolbar is unavailable, the Home screen offers an
 - **Zero permissions by default** — the floating assistant and fingerprint
   unlock are strictly opt-in and off by default; with both disabled the app
   is fully zero-permission.
+- **Clipboard ladder + launcher shortcuts** — long-press the app icon
+  for one-tap **Encrypt/Decrypt clipboard** over any app; a fallback
+  ladder (selection toolbar → sharesheet → clipboard) covers every
+  messenger, including those whose selection menus host no third-party
+  entries (see `docs/COMPATIBILITY.md`).
 - **Screen-capture protection** — screens that show decrypted plaintext
   set `FLAG_SECURE`; copied plaintext is flagged sensitive on Android 13+.
 - **Old messages keep decrypting** — superseded key eras unlock on demand
@@ -83,6 +88,14 @@ sha256sum CipherKey-v0.4.2-debug.apk
    persisted, even wrapped.
 3. **Encrypt/decrypt in any app.** The selection toolbar and the sharesheet
    carry text in and out; the clipboard fallback covers the rest.
+
+> **Don't see CipherKey in a messenger's text-selection menu?** Some
+> messengers (Telegram, WhatsApp message bubbles) draw their *own*
+> selection menu, which cannot host third-party entries — that is a
+> platform fact, not a bug. Long-press the CipherKey icon instead:
+> **Encrypt clipboard / Decrypt clipboard** launcher shortcuts work in
+> every app. Full matrix and recommended flows:
+> [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md).
 
 ## Security properties
 
@@ -157,6 +170,11 @@ CKS1 invites are specified in [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
   encoding
 - [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — what is protected, what
   is not
+- [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) — where the selection
+  toolbar / sharesheet entries appear per messenger, and the clipboard
+  flows for everywhere else
+- [`docs/DESIGN.md`](docs/DESIGN.md) — the v0.5 design research and the
+  "Calm Vault" design system
 - [`docs/PLUGINS.md`](docs/PLUGINS.md) — public-key plugin API (Mode B)
 - [`docs/DEEP-SCAN-*.md`](docs/) — dated security self-audit reports
 - [`CHANGELOG.md`](CHANGELOG.md) — version history

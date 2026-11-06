@@ -79,7 +79,10 @@ fun DecryptScreen(
 
         BusyLine(visible = state.busy)
 
-        SectionCard(title = stringResource(R.string.decrypt_input_label)) {
+        SectionCard(
+            title = stringResource(R.string.decrypt_input_label),
+            icon = CipherKeyIcons.LockOpen,
+        ) {
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
@@ -90,7 +93,7 @@ fun DecryptScreen(
             if (envelopeDetected) {
                 Text(
                     stringResource(R.string.decrypt_ck1_detected),
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Medium,
                 )
@@ -110,6 +113,7 @@ fun DecryptScreen(
                     R.string.message_from,
                     state.unlockContactName ?: "",
                 ),
+                icon = CipherKeyIcons.People,
             ) {
                 // v0.4.0: old-key-era envelopes ask for the passphrase of the
                 // era they were sent under — which may predate the current one.
@@ -121,7 +125,7 @@ fun DecryptScreen(
                             R.string.locked_hint
                         },
                     ),
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 PassphraseInput(
