@@ -237,6 +237,12 @@ class ImeController(
                     UnlockOutcome.NoSession -> notify("No key for this contact — open the app")
                     is UnlockOutcome.Rejected -> notify(outcome.reason)
                     is UnlockOutcome.Failed -> notify(outcome.reason)
+                    // v0.5.1: the era's Argon2id profile cannot fit this
+                    // device's heap — honest message, no OOM crash.
+                    is UnlockOutcome.MemoryHungry -> notify(
+                        "This key era needs ${outcome.requiredBytes / (1024L * 1024L)} MiB " +
+                            "of memory for Argon2id — this device cannot provide it",
+                    )
                 }
             } finally {
                 // Clear busy BEFORE retrying: the retry handlers are guarded

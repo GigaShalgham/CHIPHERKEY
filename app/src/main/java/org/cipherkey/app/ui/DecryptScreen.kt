@@ -104,6 +104,10 @@ fun DecryptScreen(
                 }) {
                     Text(stringResource(R.string.action_paste))
                 }
+                // v0.5.1: see WHAT the clipboard holds before pasting.
+                OutlinedButton(onClick = viewModel::previewClipboard) {
+                    Text(stringResource(R.string.action_view_clipboard))
+                }
             }
         }
 
@@ -151,6 +155,18 @@ fun DecryptScreen(
         }
 
         NoticeBanner(state.notice)
+
+        // v0.5.1: clipboard preview dialog ("View clipboard").
+        state.clipboardPreview?.let { preview ->
+            ClipboardPreviewDialog(
+                preview = preview,
+                onPaste = {
+                    viewModel.dismissClipboardPreview()
+                    viewModel.pasteIntoInput { input = it }
+                },
+                onDismiss = viewModel::dismissClipboardPreview,
+            )
+        }
 
         state.resultText?.takeIf { !state.resultIsEnvelope }?.let { plaintext ->
             SectionCard(

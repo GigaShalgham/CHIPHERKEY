@@ -10,9 +10,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -536,6 +538,78 @@ fun BusyLine(visible: Boolean) {
     if (visible) {
         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
     }
+}
+
+/**
+ * v0.5.1: "View clipboard" dialog — WHAT is on the clipboard before
+ * pasting it. Bounded preview (never the full text: a multi-megabyte clip
+ * would freeze the dialog), a CK1 detection line, the total length, and
+ * the same Paste action the field row offers.
+ */
+@Composable
+fun ClipboardPreviewDialog(
+    preview: org.cipherkey.app.ClipboardPreview,
+    onPaste: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResourceCompat(R.string.clipboard_preview_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (preview.isEnvelope) {
+                    Text(
+                        stringResourceCompat(R.string.decrypt_ck1_detected),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    SelectionContainer {
+                        Text(
+                            text = preview.text,
+                            style = if (preview.isEnvelope) {
+                                MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                            } else {
+                                MaterialTheme.typography.bodyMedium
+                            },
+                            modifier = Modifier
+                                .padding(10.dp)
+                                .heightIn(max = 220.dp)
+                                .verticalScroll(rememberScrollState()),
+                        )
+                    }
+                }
+                Text(
+                    text = stringResourceCompat(
+                        if (preview.truncated) {
+                            R.string.clipboard_preview_chars_truncated
+                        } else {
+                            R.string.clipboard_preview_chars
+                        },
+                        preview.fullLength,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onPaste) {
+                Text(stringResourceCompat(R.string.action_paste))
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text(stringResourceCompat(R.string.close))
+            }
+        },
+    )
 }
 
 /** stringResource indirection so the private helpers above stay short. */

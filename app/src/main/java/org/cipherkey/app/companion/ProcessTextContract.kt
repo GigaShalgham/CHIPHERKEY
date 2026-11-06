@@ -44,6 +44,14 @@ object ProcessTextContract {
         if (raw == null) return SelectedText.Empty
         val trimmed = raw.toString().trim()
         if (trimmed.isEmpty()) return SelectedText.Empty
+        // v0.5.1: a UTF-8 byte is never shorter than a char, so a character
+        // count above the cap is DEFINITELY above the byte cap. This cheap
+        // guard rejects a multi-hundred-MiB share/selection WITHOUT first
+        // materialising its full UTF-8 encoding — the old check allocated
+        // the entire byte array up front and OOM-crashed the app.
+        if (trimmed.length > limitBytes) {
+            return SelectedText.Oversized(limitBytes)
+        }
         val utf8Size = trimmed.toByteArray(Charsets.UTF_8).size
         if (utf8Size > limitBytes) {
             return SelectedText.Oversized(limitBytes)

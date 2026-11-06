@@ -5,6 +5,8 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,9 +14,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,17 +37,23 @@ import org.cipherkey.app.ContactsViewModel
 import org.cipherkey.app.R
 import org.cipherkey.app.SettingsEvent
 import org.cipherkey.app.SettingsViewModel
+import org.cipherkey.app.security.BiometricDiagnostics
 import org.cipherkey.app.security.BiometricGate
 import org.cipherkey.app.companion.UiNotice
 import org.cipherkey.security.policies.Argon2Profile
 import org.cipherkey.security.policies.KeyPolicy
 
 /**
- * Settings (v0.5, "Calm Vault"): four titled sections — Session & security,
- * Features, Key derivation, About — with labeled switch rows and a
- * prominent error-toned "Lock all sessions now" button. Every row still
- * states its trade-off; strings come from resources.
+ * Settings (v0.5, "Calm Vault"): four titled sections — Features,
+ * Session & security, Key derivation, About — with labeled switch rows and
+ * a compact "Lock all sessions now" button. Every row still states its
+ * trade-off; strings come from resources.
+ *
+ * v0.5.1: Features lead the screen and the session-timeout card shrank to
+ * a chip row (user feedback: the timeout tuner is not an everyday control,
+ * so it lost its pinned top slot and its seven radio rows).
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
@@ -92,64 +100,11 @@ fun SettingsScreen(
             style = MaterialTheme.typography.headlineSmall,
         )
 
-        // ------------------------------------------------ session & security
-
-        SectionCard(
-            title = stringResource(R.string.settings_unlock_section),
-            icon = CipherKeyIcons.Timer,
-        ) {
-            Text(
-                stringResource(R.string.settings_timeout_title),
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Text(
-                stringResource(R.string.settings_timeout_summary),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            KeyPolicy.TIMEOUT_CHOICES_MILLIS.forEach { choice ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 40.dp),
-                ) {
-                    RadioButton(
-                        selected = settings.sessionTimeoutMillis == choice,
-                        onClick = { viewModel.setSessionTimeoutMillis(choice) },
-                    )
-                    Text(
-                        text = if (choice >= 60 * 60_000L) {
-                            stringResource(
-                                R.string.option_hours,
-                                (choice / (60 * 60_000L)).toInt(),
-                            )
-                        } else {
-                            stringResource(
-                                R.string.option_minutes,
-                                (choice / 60_000L).toInt(),
-                            )
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
-            // v0.5: a full-width error-toned button — "lock everything"
-            // is the one destructive-ish action on this screen and used
-            // to be a quiet text link.
-            Button(
-                onClick = { contactsViewModel.lockAll() },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp),
-            ) { Text(stringResource(R.string.lock_now)) }
-        }
-
         // ------------------------------------------------------- features
+        // v0.5.1: Features FIRST — the everyday toggles lead the screen;
+        // the once-a-year session-timeout tuning moved below and shrank to a
+        // compact chip row (user feedback: "lock session time is not very
+        // necessary so unpin it from top and make it smaller").
 
         SectionCard(
             title = stringResource(R.string.settings_features_section),
@@ -164,7 +119,7 @@ fun SettingsScreen(
                 // v0.4.1: the honest reason per failure — the v0.4.0 row
                 // guessed "No fingerprint enrolled" for every case.
                 NoticeBanner(
-                    UiNotice(biometricReasonRes(gate)),
+                    UiNotice(BiometricDiagnostics.reasonRes(gate)),
                     NoticeTone.WARNING,
                 )
             }
@@ -201,6 +156,56 @@ fun SettingsScreen(
                     )
                 }) { Text(stringResource(R.string.settings_assistant_open_settings)) }
             }
+        }
+
+        // ------------------------------------------------ session & security
+        // v0.5.1: compact — one summary line, a single chip row for the
+        // timeout (was seven 40dp radio rows) and a small wrap-content lock
+        // button (was a full-width 48dp error-toned button).
+
+        SectionCard(
+            title = stringResource(R.string.settings_unlock_section),
+            icon = CipherKeyIcons.Timer,
+        ) {
+            Text(
+                stringResource(R.string.settings_timeout_title),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                KeyPolicy.TIMEOUT_CHOICES_MILLIS.forEach { choice ->
+                    FilterChip(
+                        selected = settings.sessionTimeoutMillis == choice,
+                        onClick = { viewModel.setSessionTimeoutMillis(choice) },
+                        label = {
+                            Text(
+                                if (choice >= 60 * 60_000L) {
+                                    stringResource(
+                                        R.string.option_hours_short,
+                                        (choice / (60 * 60_000L)).toInt(),
+                                    )
+                                } else {
+                                    stringResource(
+                                        R.string.option_minutes_short,
+                                        (choice / 60_000L).toInt(),
+                                    )
+                                },
+                            )
+                        },
+                    )
+                }
+            }
+            Text(
+                stringResource(R.string.settings_timeout_summary),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(
+                onClick = { contactsViewModel.lockAll() },
+                modifier = Modifier.heightIn(min = 40.dp),
+            ) { Text(stringResource(R.string.lock_now)) }
         }
 
         // ------------------------------------------------ KDF strength
@@ -245,7 +250,6 @@ fun SettingsScreen(
         }
 
         // ------------------------------------------------ about
-
         SectionCard(
             title = stringResource(R.string.settings_about_title),
             icon = CipherKeyIcons.Info,
@@ -266,14 +270,4 @@ fun SettingsScreen(
             )
         }
     }
-}
-
-@Composable
-private fun biometricReasonRes(gate: BiometricGate): Int = when (gate) {
-    BiometricGate.NONE_ENROLLED -> R.string.biometric_reason_none_enrolled
-    BiometricGate.NO_HARDWARE -> R.string.biometric_reason_no_hardware
-    BiometricGate.HW_UNAVAILABLE -> R.string.biometric_reason_hw_unavailable
-    BiometricGate.SECURITY_UPDATE -> R.string.biometric_reason_security_update
-    BiometricGate.NOT_STRONG -> R.string.biometric_reason_not_strong
-    BiometricGate.AVAILABLE -> R.string.settings_biometric_summary
 }

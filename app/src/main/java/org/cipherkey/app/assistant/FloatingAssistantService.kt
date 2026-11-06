@@ -8,7 +8,10 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
+import android.content.res.ColorStateList
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
@@ -19,6 +22,8 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -33,21 +38,33 @@ import org.cipherkey.app.companion.EXTRA_FROM_CLIPBOARD
 import org.cipherkey.app.companion.DecryptActivity
 import org.cipherkey.app.companion.EncryptActivity
 import org.cipherkey.data.preferences.SettingsRepository
+import org.cipherkey.data.repository.MessageCipher
 
 /**
- * Floating assistant (v0.3.0): a user-enabled overlay bubble with quick
- * Encrypt/Decrypt-clipboard actions.
+ * Floating assistant (v0.3.0, redesigned v0.5.1): a user-enabled overlay
+ * bubble with a labeled quick-action panel.
  *
  * SECURITY CONTRACT:
  *  - the service starts ONLY on an explicit user action (the Settings toggle
  *    or the auto-start after the user had enabled it with the permission
  *    granted — see [AssistantReadiness]);
- *  - it holds no key material and performs no crypto: the buttons merely
+ *  - it holds no key material and performs no crypto: Encrypt / Decrypt
  *    launch the existing companion activities with the clipboard extra, so
  *    every encryption decision still runs through the audited companion
  *    flow (spec 003/004) with its focus-gated clipboard reads;
- *  - tapping "Close" on the panel persists assistantEnabled = false, so the
- *    bubble does not come back until the user re-enables it.
+ *  - "Lock all sessions" is the one background action: it calls
+ *    [MessageCipher.lockAll], which WIPES in-memory keys and nothing else —
+ *    a destructive-only panic affordance, never an unlock;
+ *  - the service never reads the clipboard itself (Android 10+ denies
+ *    clipboard access to unfocused windows) — hence the in-messenger hint
+ *    at the bottom of the panel: copy in the messenger, then tap here;
+ *  - tapping "Turn off" on the panel persists assistantEnabled = false, so
+ *    the bubble does not come back until the user re-enables it.
+ *
+ * v0.5.1 panel (user feedback "floating assistant is too weak, no
+ * options"): labeled rows instead of three bare icons —
+ *   Encrypt clipboard · Decrypt clipboard · Lock all sessions ·
+ *   Open CipherKey · Turn off — plus the messenger hint line.
  *
  * The overlay needs SYSTEM_ALERT_WINDOW ("Display over other apps"), which
  * cannot be requested at runtime — Settings deep-links the user to it.
@@ -57,6 +74,9 @@ class FloatingAssistantService : Service() {
 
     @Inject
     lateinit var settings: SettingsRepository
+
+    @Inject
+    lateinit var messageCipher: MessageCipher
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -128,29 +148,8 @@ class FloatingAssistantService : Service() {
             setPadding(pad, pad, pad, pad)
         }
 
-        // The expanded quick-action panel.
-        val panelView = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            background = GradientDrawable().apply {
-                cornerRadius = 28 * density
-                setColor(Color.argb(240, 23, 26, 36))
-            }
-            setPadding(pad, pad, pad, pad)
-            visibility = View.GONE
-            addView(
-                panelButton(R.drawable.ic_assistant_lock, R.string.assistant_encrypt) {
-                    launchClipboardFlow(encrypt = true)
-                },
-            )
-            addView(
-                panelButton(R.drawable.ic_assistant_lock_open, R.string.assistant_decrypt) {
-                    launchClipboardFlow(encrypt = false)
-                },
-            )
-            addView(panelButton(R.drawable.ic_assistant_close, R.string.close) {
-                closeAssistant()
-            })
-        }
+        // The expanded quick-action panel (v0.5.1: labeled rows + hint).
+        val panelView = buildPanel(density)
 
         val overlay = FrameLayout(this).apply {
             addView(bubbleView)
@@ -166,21 +165,133 @@ class FloatingAssistantService : Service() {
         panel = panelView
     }
 
-    private fun panelButton(iconRes: Int, labelRes: Int, onClick: () -> Unit): View =
-        ImageView(this).apply {
-            setImageResource(iconRes)
-            contentDescription = getString(labelRes)
-            val pad = (11 * resources.displayMetrics.density).toInt()
-            setPadding(pad, pad, pad, pad)
+    /** Vertical action panel — labeled rows, dark surface, hint footer. */
+    private fun buildPanel(density: Float): LinearLayout =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.TRANSPARENT)
+                cornerRadius = 22 * density
+                setColor(Color.argb(244, 23, 26, 36))
             }
+            val hPad = (6 * density).toInt()
+            val vPad = (10 * density).toInt()
+            setPadding(hPad, vPad, hPad, vPad)
+            visibility = View.GONE
+
+            addView(
+                panelRow(
+                    iconRes = R.drawable.ic_assistant_lock,
+                    labelRes = R.string.assistant_encrypt_clipboard,
+                    density = density,
+                ) { launchClipboardFlow(encrypt = true) },
+            )
+            addView(
+                panelRow(
+                    iconRes = R.drawable.ic_assistant_lock_open,
+                    labelRes = R.string.assistant_decrypt_clipboard,
+                    density = density,
+                ) { launchClipboardFlow(encrypt = false) },
+            )
+            addView(
+                panelRow(
+                    iconRes = R.drawable.ic_assistant_lock_all,
+                    labelRes = R.string.assistant_lock_all,
+                    density = density,
+                ) { lockAllSessions() },
+            )
+            addView(
+                panelRow(
+                    iconRes = R.drawable.ic_assistant_app,
+                    labelRes = R.string.assistant_open_app,
+                    density = density,
+                ) { openApp() },
+            )
+            addView(
+                panelRow(
+                    iconRes = R.drawable.ic_assistant_close,
+                    labelRes = R.string.assistant_turn_off,
+                    density = density,
+                ) { closeAssistant() },
+            )
+
+            // The one thing users must know in messengers (the panel cannot
+            // read another app's selection — no app can).
+            addView(
+                TextView(this@FloatingAssistantService).apply {
+                    text = getString(R.string.assistant_hint)
+                    textSize = 11f
+                    setTextColor(Color.argb(200, 168, 176, 200))
+                    setPadding(
+                        (12 * density).toInt(),
+                        (8 * density).toInt(),
+                        (12 * density).toInt(),
+                        (2 * density).toInt(),
+                    )
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ).apply { topMargin = (6 * density).toInt() }
+                },
+            )
+        }
+
+    /** One labeled, tappable row of the panel (48dp touch target). */
+    private fun panelRow(
+        iconRes: Int,
+        labelRes: Int,
+        density: Float,
+        onClick: () -> Unit,
+    ): View =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             isClickable = true
+            // setFocusable(boolean) is overloaded by setFocusable(int) —
+            // property syntax cannot pick one, so call the Boolean overload.
+            setFocusable(true)
+
+            val rippleColor = ColorStateList.valueOf(Color.argb(40, 255, 255, 255))
+            background = RippleDrawable(
+                rippleColor,
+                GradientDrawable().apply {
+                    cornerRadius = 16 * density
+                    setColor(Color.TRANSPARENT)
+                },
+                null,
+            )
             setOnClickListener { onClick() }
+            setPadding(
+                (12 * density).toInt(),
+                (10 * density).toInt(),
+                (16 * density).toInt(),
+                (10 * density).toInt(),
+            )
             layoutParams = LinearLayout.LayoutParams(
-                (44 * resources.displayMetrics.density).toInt(),
-                (44 * resources.displayMetrics.density).toInt(),
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                (48 * density).toInt(),
+            )
+
+            addView(
+                ImageView(this@FloatingAssistantService).apply {
+                    setImageResource(iconRes)
+                    contentDescription = null
+                    layoutParams = LinearLayout.LayoutParams(
+                        (20 * density).toInt(),
+                        (20 * density).toInt(),
+                    ).apply { marginEnd = (12 * density).toInt() }
+                },
+            )
+            addView(
+                TextView(this@FloatingAssistantService).apply {
+                    text = getString(labelRes)
+                    textSize = 15f
+                    setTextColor(Color.argb(245, 233, 236, 248))
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    )
+                },
             )
         }
 
@@ -257,7 +368,37 @@ class FloatingAssistantService : Service() {
         runCatching { startActivity(intent) }
     }
 
-    /** "Close" on the panel: persist disabled, then stop the service. */
+    /**
+     * v0.5.1: panic affordance — wipe every in-memory session key. Never
+     * unlocks anything, touches nothing on disk; a Toast confirms it.
+     */
+    private fun lockAllSessions() {
+        collapsePanel()
+        scope.launch {
+            runCatching {
+                val wiped = messageCipher.lockAll()
+                Toast.makeText(
+                    this@FloatingAssistantService,
+                    if (wiped > 0) {
+                        getString(R.string.assistant_locked_all, wiped)
+                    } else {
+                        getString(R.string.assistant_locked_all_none)
+                    },
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+    }
+
+    /** v0.5.1: jump straight into the app's management UI. */
+    private fun openApp() {
+        collapsePanel()
+        val intent = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { startActivity(intent) }
+    }
+
+    /** "Turn off" on the panel: persist disabled, then stop the service. */
     private fun closeAssistant() {
         collapsePanel()
         scope.launch {

@@ -13,12 +13,24 @@ import androidx.fragment.app.FragmentActivity
  * never receives or stores biometric data, and a failed/expired
  * authorization simply yields no key bytes.
  *
- * Results are delivered as nullable callbacks on the main thread:
+ * Results are delivered as callbacks on the main thread carrying an
+ * OPTIONAL failure reason (v0.5.1):
  *  - [unlockKey]: the unwrapped session key, or null (nothing remembered,
  *    stale wrap, user cancel, or hardware failure — the passphrase path
- *    always remains available);
- *  - [rememberKey]: whether the wrap was persisted. The plaintext buffer
+ *    always remains available). The reason string is null for a plain
+ *    user cancel and carries the system's own message otherwise;
+ *  - [rememberKey]: whether the wrap persisted. The plaintext buffer
  *    is zeroed on EVERY path, success or failure.
+ *
+ * v0.5.1 hardening (reported: "fingerprint didn't work anywhere"):
+ *  - a canAuthenticate(BIOMETRIC_STRONG) pre-flight runs BEFORE the prompt
+ *    is even constructed — a device that lost its strong enrolment (or
+ *    never had it) now returns immediately with a localized reason instead
+ *    of relying on the prompt to fail in OEM-specific ways;
+ *  - the STRONG-gate reason is localized via [BiometricDiagnostics];
+ *  - the prompt library was moved to the maintained 1.2.0-alpha05 line
+ *    (1.1.0 silently failed to show the prompt on Android 12+ with
+ *    BIOMETRIC_STRONG + CryptoObject on several OEM builds).
  */
 class BiometricPromptHelper(
     private val activity: FragmentActivity,
@@ -29,11 +41,24 @@ class BiometricPromptHelper(
 
     fun canPrompt(): Boolean = store.isDeviceCapable()
 
+    /**
+     * Localized "why not" for a device that cannot do Strong-class auth
+     * right now, or null when it can.
+     */
+    private fun gateReason(): String? {
+        val gate = BiometricDiagnostics.gateFor(store.strongAuthResult())
+        return if (gate == BiometricGate.AVAILABLE) {
+            null
+        } else {
+            activity.getString(BiometricDiagnostics.reasonRes(gate))
+        }
+    }
+
     /** Unwrap the remembered key for [contactKey] behind the fingerprint. */
-    fun unlockKey(contactKey: String, onResult: (ByteArray?) -> Unit) {
+    fun unlockKey(contactKey: String, onResult: (ByteArray?, String?) -> Unit) {
         val wrapped = store.readWrapped(contactKey)
         if (wrapped == null) {
-            onResult(null)
+            onResult(null, null)
             return
         }
         val cipher = store.newUnwrapCipher(wrapped)
@@ -41,7 +66,13 @@ class BiometricPromptHelper(
             // Blob too short or Keystore unavailable: the entry can never
             // open again — discard it so the UI stops offering it.
             store.clear(contactKey)
-            onResult(null)
+            onResult(null, null)
+            return
+        }
+        gateReason()?.let { reason ->
+            // v0.5.1: do not even build the prompt when the STRONG gate is
+            // closed — report the honest, localized reason immediately.
+            onResult(null, reason)
             return
         }
         val prompt = BiometricPrompt(
@@ -49,27 +80,27 @@ class BiometricPromptHelper(
             executor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationError(code: Int, message: CharSequence) {
-                    onResult(null)
+                    onResult(null, reasonOrNull(code, message))
                 }
 
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     val authorized = result.cryptoObject?.cipher
                     if (authorized == null) {
-                        onResult(null)
+                        onResult(null, null)
                         return
                     }
                     try {
                         val keyBytes = store.finishUnwrap(authorized, wrapped, aad(contactKey))
                         if (keyBytes.isEmpty()) {
-                            onResult(null)
+                            onResult(null, null)
                         } else {
-                            onResult(keyBytes)
+                            onResult(keyBytes, null)
                         }
                     } catch (e: Exception) {
                         // GCM tag mismatch: the era rotated since the wrap
                         // (AAD changed) or the blob is corrupt — discard.
                         store.clear(contactKey)
-                        onResult(null)
+                        onResult(null, null)
                     }
                 }
             },
@@ -86,11 +117,16 @@ class BiometricPromptHelper(
      * Wrap [plain] for [contactKey] behind the fingerprint and persist it.
      * [plain] is wiped on every path — the caller never has to do it.
      */
-    fun rememberKey(contactKey: String, plain: ByteArray, onDone: (Boolean) -> Unit) {
+    fun rememberKey(contactKey: String, plain: ByteArray, onDone: (Boolean, String?) -> Unit) {
         val cipher = store.newWrapCipher()
         if (cipher == null) {
             plain.fill(0)
-            onDone(false)
+            onDone(false, null)
+            return
+        }
+        gateReason()?.let { reason ->
+            plain.fill(0)
+            onDone(false, reason)
             return
         }
         val prompt = BiometricPrompt(
@@ -99,24 +135,24 @@ class BiometricPromptHelper(
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationError(code: Int, message: CharSequence) {
                     plain.fill(0)
-                    onDone(false)
+                    onDone(false, reasonOrNull(code, message))
                 }
 
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     val authorized = result.cryptoObject?.cipher
                     if (authorized == null) {
                         plain.fill(0)
-                        onDone(false)
+                        onDone(false, null)
                         return
                     }
                     try {
                         val blob = store.finishWrap(authorized, plain, aad(contactKey))
                         plain.fill(0)
                         store.persistWrapped(contactKey, blob)
-                        onDone(true)
+                        onDone(true, null)
                     } catch (e: Exception) {
                         plain.fill(0)
-                        onDone(false)
+                        onDone(false, null)
                     }
                 }
             },
@@ -127,6 +163,18 @@ class BiometricPromptHelper(
             ),
             BiometricPrompt.CryptoObject(cipher),
         )
+    }
+
+    /**
+     * A user cancel / "Not now" is not an error worth a banner — null.
+     * Every other authentication error carries the system's own localized
+     * message so the notice can say what actually happened.
+     */
+    private fun reasonOrNull(code: Int, message: CharSequence): String? = when (code) {
+        BiometricPrompt.ERROR_NEGATIVE_BUTTON,
+        BiometricPrompt.ERROR_USER_CANCELED,
+        -> null
+        else -> message.toString().ifBlank { "authentication error $code" }
     }
 
     private fun promptInfo(titleRes: Int): BiometricPrompt.PromptInfo =

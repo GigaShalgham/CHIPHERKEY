@@ -67,9 +67,9 @@ fun CompanionSheet(
     onRetryClipboard: (() -> Unit)? = null,
     biometrics: org.cipherkey.app.security.BiometricKeyStore? = null,
     onRequestBiometricUnlock: () -> Unit = {},
-    onBiometricUnlock: (ByteArray?) -> Unit = {},
+    onBiometricUnlock: (ByteArray?, String?) -> Unit = { _, _ -> },
     loadRememberKey: (suspend () -> ByteArray?)? = null,
-    onRememberDone: (Boolean) -> Unit = {},
+    onRememberDone: (Boolean, String?) -> Unit = { _, _ -> },
 ) {
     val promptHelper = biometrics?.let { rememberBiometricPromptHelper(it) }
 

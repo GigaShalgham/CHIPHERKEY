@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Floating assistant panel icon: lock every session at once (v0.5.1).
+     A padlock over three stacked "items" (sessions). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <!-- stacked sessions -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M3,4h10v2H3zM5,8h10v2H5z" />
+    <!-- padlock -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M17,10h-0.5V8.5c0,-1.93 -1.57,-3.5 -3.5,-3.5S9.5,6.57 9.5,8.5V10H9c-0.55,0 -1,0.45 -1,1v6c0,0.55 0.45,1 1,1h8c0.55,0 1,-0.45 1,-1v-6c0,-0.55 -0.45,-1 -1,-1zM13,16.5c-0.83,0 -1.5,-0.67 -1.5,-1.5s0.67,-1.5 1.5,-1.5 1.5,0.67 1.5,1.5 -0.67,1.5 -1.5,1.5zM14.5,10h-3V8.5c0,-0.83 0.67,-1.5 1.5,-1.5s1.5,0.67 1.5,1.5V10z" />
+</vector>

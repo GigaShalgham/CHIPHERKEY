@@ -15,6 +15,8 @@ import org.cipherkey.app.security.BiometricKeyStore
 import org.cipherkey.app.security.BiometricPromptRequest
 import org.cipherkey.core.common.ContactId
 import org.cipherkey.core.common.SessionId
+import org.cipherkey.core.crypto.CryptoError
+import org.cipherkey.core.messages.Ck1Limits
 import org.cipherkey.core.sessions.wipe
 import org.cipherkey.data.preferences.SettingsRepository
 import org.cipherkey.data.repository.Contact
@@ -235,7 +237,11 @@ class CompanionViewModel @Inject constructor(
                 )
                 is EncryptOutcome.Failed -> _state.value = _state.value.copy(
                     busy = false,
-                    notice = UiNotice(R.string.notice_encrypt_failed, out.error.toString()),
+                    notice = if (out.error == CryptoError.InputTooLarge) {
+                        UiNotice(R.string.notice_input_too_long, "${Ck1Limits.MAX_PLAINTEXT_BYTES / 1024}")
+                    } else {
+                        UiNotice(R.string.notice_encrypt_failed, out.error.toString())
+                    },
                 )
             }
         }
@@ -330,12 +336,18 @@ class CompanionViewModel @Inject constructor(
      * v0.3.0: outcome of the system prompt. Null = canceled or failed —
      * the passphrase path remains. Non-null = unlock the era with the
      * remembered key and continue the interrupted flow.
+     *
+     * v0.5.1: [reason] carries the system's own localized message for
+     * non-cancel failures (sensor busy, enrolment gone, …) so the notice
+     * says what actually happened instead of a blanket "did not complete".
      */
-    fun onBiometricUnlockResult(keyBytes: ByteArray?) {
+    fun onBiometricUnlockResult(keyBytes: ByteArray?, reason: String? = null) {
         _state.value = _state.value.copy(biometricPrompt = null)
         if (keyBytes == null) {
             _state.value = _state.value.copy(
-                notice = UiNotice(R.string.notice_biometric_failed),
+                notice = reason?.let {
+                    UiNotice(R.string.notice_biometric_failed_reason, it)
+                } ?: UiNotice(R.string.notice_biometric_failed),
             )
             return
         }
@@ -397,12 +409,17 @@ class CompanionViewModel @Inject constructor(
 
     /**
      * v0.3.0: after a passphrase unlock, offer to remember the key behind
-     * the fingerprint (only when enabled, capable, and not already wrapped).
+     * the fingerprint.
+     *
+     * v0.5.1 (reported "fingerprint didn't work anywhere"): the Settings
+     * toggle no longer HIDES this offer. The system prompt itself — titled
+     * "Remember this key", dismissed with "Not now" — is the consent; on
+     * success the toggle is persisted ON so Settings reflects reality.
+     * Turning the toggle OFF still wipes every wrap (unchanged semantics).
      */
     fun offerRemember(contactId: ContactId) {
         launchSafely {
-            val enabled = settings.settings.first().biometricUnlockEnabled
-            if (!enabled || !biometrics.isDeviceCapable()) return@launchSafely
+            if (!biometrics.isDeviceCapable()) return@launchSafely
             val contactKey = biometricContactKeyFor(contactId) ?: return@launchSafely
             if (!biometrics.hasWrapped(contactKey)) {
                 _state.value = _state.value.copy(
@@ -422,12 +439,25 @@ class CompanionViewModel @Inject constructor(
         return messageCipher.exportSessionKey(id)
     }
 
-    /** v0.3.0: prompt finished — [success] says whether the wrap persisted. */
-    fun onRememberDone(success: Boolean) {
+    /**
+     * v0.3.0: prompt finished — [success] says whether the wrap persisted.
+     *
+     * v0.5.1: a persisted wrap turns the Settings toggle ON (the user just
+     * authenticated "Remember this key" — that IS the opt-in); a non-cancel
+     * failure surfaces the system's reason instead of failing silently.
+     */
+    fun onRememberDone(success: Boolean, reason: String? = null) {
         _state.value = _state.value.copy(
             biometricPrompt = null,
             biometricOffered = _state.value.biometricOffered || success,
         )
+        if (success) {
+            launchSafely { settings.setBiometricUnlockEnabled(true) }
+        } else if (reason != null) {
+            _state.value = _state.value.copy(
+                notice = UiNotice(R.string.notice_biometric_failed_reason, reason),
+            )
+        }
     }
 
     /** The pending-or-selected contact's biometric key, or null. */
@@ -656,6 +686,15 @@ class CompanionViewModel @Inject constructor(
                         busy = false,
                         notice = UiNotice(R.string.notice_unlock_failed, outcome.reason),
                     )
+                    is UnlockOutcome.MemoryHungry -> _state.value = _state.value.copy(
+                        busy = false,
+                        // v0.5.1: the era's Argon2id profile does not fit this
+                        // device's heap — honest notice, no OOM crash.
+                        notice = UiNotice(
+                            R.string.notice_kdf_memory,
+                            "${outcome.requiredBytes / (1024L * 1024L)}",
+                        ),
+                    )
                 }
             } finally {
                 // The passphrase is wiped on EVERY path — including a thrown
@@ -704,6 +743,13 @@ class CompanionViewModel @Inject constructor(
                     is UnlockOutcome.Failed -> _state.value = _state.value.copy(
                         busy = false,
                         notice = UiNotice(R.string.notice_unlock_failed, outcome.reason),
+                    )
+                    is UnlockOutcome.MemoryHungry -> _state.value = _state.value.copy(
+                        busy = false,
+                        notice = UiNotice(
+                            R.string.notice_kdf_memory,
+                            "${outcome.requiredBytes / (1024L * 1024L)}",
+                        ),
                     )
                 }
             } finally {

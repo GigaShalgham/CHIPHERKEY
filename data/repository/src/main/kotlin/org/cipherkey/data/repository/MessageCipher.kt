@@ -14,6 +14,7 @@ import org.cipherkey.core.crypto.EncryptionContext
 import org.cipherkey.core.crypto.EncryptionMode
 import org.cipherkey.core.crypto.EncryptionResult
 import org.cipherkey.core.crypto.DecryptionResult
+import org.cipherkey.core.crypto.KdfMemoryException
 import org.cipherkey.core.keys.KeyProtector
 import org.cipherkey.core.keys.KeyProtectionException
 import org.cipherkey.core.messages.Ck1
@@ -37,6 +38,16 @@ sealed interface UnlockOutcome {
 
     /** Unexpected internal failure (e.g. Keystore unavailable). */
     data class Failed(val reason: String) : UnlockOutcome
+
+    /**
+     * v0.5.1: the era's Argon2id profile needs [requiredBytes] of heap —
+     * more than this device's process can provide. The passphrase was NOT
+     * wrong and nothing failed: the profile simply does not fit (reported
+     * with the 256 MiB PARANOID preset, which OOM-crashed before this
+     * outcome existed). The UI answers with a localized "pick a lower
+     * strength" notice instead of a crash.
+     */
+    data class MemoryHungry(val requiredBytes: Long) : UnlockOutcome
 }
 
 /** Outcome of encrypting a draft for a contact. */
@@ -153,10 +164,12 @@ class MessageCipher(
             }
 
             val timeout = sessionTimeout.timeoutMillis()
-            val derived = sessions.deriveKey(passphrase, era.salt, era.params)
+            var derived: ByteArray? = null
             try {
-                verifyAndPersistVerifier(era, derived)?.let { verdict ->
-                    derived.fill(0)
+                val bytes = sessions.deriveKey(passphrase, era.salt, era.params)
+                derived = bytes
+                verifyAndPersistVerifier(era, bytes)?.let { verdict ->
+                    derived?.fill(0)
                     if (verdict is UnlockOutcome.Failed) {
                         // Keystore infrastructure failed mid-verify: the
                         // original path locked the contact here — kept.
@@ -170,20 +183,25 @@ class MessageCipher(
                     keyId = era.keyId,
                     salt = era.salt,
                     params = era.params,
-                    keyBytes = derived,
+                    keyBytes = bytes,
                     timeoutMillis = timeout,
                 )
                 // activate() copies the buffer (deep-scan finding 1): the
                 // session owns its key material from here on, so this local
                 // reference can be wiped on every path.
-                derived.fill(0)
+                derived?.fill(0)
                 UnlockOutcome.Unlocked
+            } catch (e: KdfMemoryException) {
+                // v0.5.1: the profile does not fit the heap — nothing was
+                // derived, so there is nothing to wipe. Not a passphrase
+                // problem and not an infrastructure failure.
+                UnlockOutcome.MemoryHungry(e.requiredBytes)
             } catch (e: KeyProtectionException) {
-                derived.fill(0)
+                derived?.fill(0)
                 sessions.lock(contactId)
                 UnlockOutcome.Failed("Keystore error — ${e.message ?: "key protection failed"}")
             } catch (e: Exception) {
-                derived.fill(0)
+                derived?.fill(0)
                 sessions.lock(contactId)
                 UnlockOutcome.Failed(e.message ?: "unlock failed")
             }
@@ -193,6 +211,13 @@ class MessageCipher(
     suspend fun encryptDraft(contactId: ContactId, plaintext: String): EncryptOutcome =
         withContext(dispatchers.io) {
             if (plaintext.isEmpty()) return@withContext EncryptOutcome.EmptyDraft
+            // v0.5.1: a UTF-8 byte is never shorter than a char, so a
+            // character count over the cap is DEFINITELY oversized — reject
+            // before the toByteArray below materialises the full encoding.
+            // A pasted multi-hundred-MiB draft used to OOM-crash right here.
+            if (plaintext.length > Ck1Limits.MAX_PLAINTEXT_BYTES) {
+                return@withContext EncryptOutcome.Failed(CryptoError.InputTooLarge)
+            }
 
             val era = sessionKeys.latestEra(contactId)
                 ?: return@withContext EncryptOutcome.NoSession
@@ -327,10 +352,12 @@ class MessageCipher(
             }
 
             val timeout = sessionTimeout.timeoutMillis()
-            val derived = sessions.deriveKey(passphrase, era.salt, era.params)
+            var derived: ByteArray? = null
             try {
-                verifyAndPersistVerifier(era, derived)?.let { verdict ->
-                    derived.fill(0)
+                val bytes = sessions.deriveKey(passphrase, era.salt, era.params)
+                derived = bytes
+                verifyAndPersistVerifier(era, bytes)?.let { verdict ->
+                    derived?.fill(0)
                     return@withContext verdict
                 }
                 sessions.activateHistorical(
@@ -339,18 +366,22 @@ class MessageCipher(
                     keyId = era.keyId,
                     salt = era.salt,
                     params = era.params,
-                    keyBytes = derived,
+                    keyBytes = bytes,
                     timeoutMillis = timeout,
                 )
                 // activateHistorical() copies the buffer, like activate():
                 // the historical session owns its key material from here on.
-                derived.fill(0)
+                derived?.fill(0)
                 UnlockOutcome.Unlocked
+            } catch (e: KdfMemoryException) {
+                // v0.5.1: mirror unlockContact — the old era's profile does
+                // not fit this device's heap; honest outcome, no crash.
+                UnlockOutcome.MemoryHungry(e.requiredBytes)
             } catch (e: KeyProtectionException) {
-                derived.fill(0)
+                derived?.fill(0)
                 UnlockOutcome.Failed("Keystore error — ${e.message ?: "key protection failed"}")
             } catch (e: Exception) {
-                derived.fill(0)
+                derived?.fill(0)
                 UnlockOutcome.Failed(e.message ?: "era unlock failed")
             }
         }

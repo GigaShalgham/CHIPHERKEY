@@ -92,6 +92,36 @@ class Argon2KeyDerivatorTest {
         assertArrayEquals(a, b)
     }
 
+    // ------------------------------------------------- v0.5.1 heap pre-flight
+
+    @Test
+    fun `profile that cannot fit the heap fails as KdfMemoryException`() {
+        // Emulated 256 MiB Android heap + 256 MiB PARANOID profile: the
+        // pre-flight must reject BEFORE BouncyCastle allocates (this exact
+        // combination OOM-crashed real devices in v0.5.0).
+        val tinyHeap = Argon2KeyDerivator(maxHeapBytes = { 256L * 1024 * 1024 })
+        val paranoid = Argon2Params(memoryExponent = 18, iterations = 4, parallelism = 1)
+        try {
+            tinyHeap.derive("pw-123456".toCharArray(), salt(9), paranoid)
+            throw AssertionError("expected KdfMemoryException")
+        } catch (expected: KdfMemoryException) {
+            assertEquals(256L * 1024 * 1024, expected.requiredBytes)
+        }
+    }
+
+    @Test
+    fun `profile that fits the heap derives normally`() {
+        // 64 MiB profile against an emulated 128 MiB heap (fits with the
+        // 1.25 headroom): derivation proceeds and produces a full tag.
+        val roomyHeap = Argon2KeyDerivator(maxHeapBytes = { 128L * 1024 * 1024 })
+        val tag = roomyHeap.derive(
+            "pw-123456".toCharArray(),
+            salt(9),
+            Argon2Params(memoryExponent = 16, iterations = 1, parallelism = 1),
+        )
+        assertEquals(32, tag.size)
+    }
+
     private fun fastParams() = Argon2Params(memoryExponent = 3, iterations = 1, parallelism = 1)
 
     private fun salt(seed: Int) = ByteArray(16) { ((it + seed) and 0xFF).toByte() }

@@ -46,4 +46,18 @@ object BiometricDiagnostics {
         BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED -> BiometricGate.SECURITY_UPDATE
         else -> BiometricGate.NOT_STRONG
     }
+
+    /**
+     * v0.5.1: the localized user-facing reason for a closed gate — shared
+     * by the Settings row and the biometric prompt pre-flight (previously
+     * duplicated as a private mapping inside SettingsScreen).
+     */
+    fun reasonRes(gate: BiometricGate): Int = when (gate) {
+        BiometricGate.NONE_ENROLLED -> org.cipherkey.app.R.string.biometric_reason_none_enrolled
+        BiometricGate.NO_HARDWARE -> org.cipherkey.app.R.string.biometric_reason_no_hardware
+        BiometricGate.HW_UNAVAILABLE -> org.cipherkey.app.R.string.biometric_reason_hw_unavailable
+        BiometricGate.SECURITY_UPDATE -> org.cipherkey.app.R.string.biometric_reason_security_update
+        BiometricGate.NOT_STRONG -> org.cipherkey.app.R.string.biometric_reason_not_strong
+        BiometricGate.AVAILABLE -> org.cipherkey.app.R.string.settings_biometric_summary
+    }
 }

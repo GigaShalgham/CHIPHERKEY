@@ -16,6 +16,9 @@ import org.cipherkey.app.security.BiometricKeyStore
 import org.cipherkey.app.security.BiometricPromptRequest
 import org.cipherkey.core.common.ContactId
 import org.cipherkey.core.common.SessionId
+import org.cipherkey.core.crypto.CryptoError
+import org.cipherkey.core.messages.Ck1
+import org.cipherkey.core.messages.Ck1Limits
 import org.cipherkey.core.sessions.wipe
 import org.cipherkey.data.preferences.SettingsRepository
 import org.cipherkey.data.repository.Contact
@@ -25,6 +28,7 @@ import org.cipherkey.data.repository.EncryptOutcome
 import org.cipherkey.data.repository.MessageCipher
 import org.cipherkey.data.repository.UnlockOutcome
 import org.cipherkey.security.clipboard.ClipboardAccess
+import org.cipherkey.security.clipboard.ClipboardRead
 
 /**
  * State of the in-app Tools tabs (v0.3.0): manual encrypt and decrypt of
@@ -57,9 +61,31 @@ data class ToolsUiState(
     val biometricOffered: Boolean = false,
     /** v0.3.0: non-null while the system biometric prompt should be shown. */
     val biometricPrompt: BiometricPromptRequest? = null,
+    /** v0.5.1: clipboard preview dialog payload (null = dialog closed). */
+    val clipboardPreview: ClipboardPreview? = null,
 ) {
     val selectedContact: Contact?
         get() = contacts.firstOrNull { it.id == selectedContactId }
+}
+
+/**
+ * v0.5.1: what the "View clipboard" dialog shows — a bounded preview of
+ * the current clip, never the full text (a multi-megabyte clip would
+ * freeze the dialog; the Paste action still inserts everything).
+ */
+data class ClipboardPreview(
+    /** First [ClipboardPreview.MAX_CHARS] characters of the clip. */
+    val text: String,
+    /** Total character count of the full clip. */
+    val fullLength: Int,
+    /** True when [text] had to be cut short. */
+    val truncated: Boolean,
+    /** True when the clip starts with the CK1 envelope prefix. */
+    val isEnvelope: Boolean,
+) {
+    companion object {
+        const val MAX_CHARS = 400
+    }
 }
 
 /**
@@ -246,6 +272,15 @@ class ToolsViewModel @Inject constructor(
                         busy = false,
                         notice = UiNoticeOf(R.string.notice_unlock_failed, outcome.reason),
                     )
+                    is UnlockOutcome.MemoryHungry -> _state.value = _state.value.copy(
+                        busy = false,
+                        // v0.5.1: the Argon2id profile does not fit this
+                        // device's heap — honest notice, no OOM crash.
+                        notice = UiNoticeOf(
+                            R.string.notice_kdf_memory,
+                            "${outcome.requiredBytes / (1024L * 1024L)}",
+                        ),
+                    )
                 }
             } finally {
                 passphrase.wipe()
@@ -291,12 +326,19 @@ class ToolsViewModel @Inject constructor(
         }
     }
 
-    /** v0.3.0: outcome of the system prompt (null = canceled / failed). */
-    fun onBiometricUnlockResult(keyBytes: ByteArray?) {
+    /**
+     * v0.3.0: outcome of the system prompt (null = canceled / failed).
+     *
+     * v0.5.1: [reason] carries the system's localized message for
+     * non-cancel failures so the notice explains what happened.
+     */
+    fun onBiometricUnlockResult(keyBytes: ByteArray?, reason: String? = null) {
         _state.value = _state.value.copy(biometricPrompt = null)
         if (keyBytes == null) {
             _state.value = _state.value.copy(
-                notice = UiNoticeOf(R.string.notice_biometric_failed),
+                notice = reason?.let {
+                    UiNoticeOf(R.string.notice_biometric_failed_reason, it)
+                } ?: UiNoticeOf(R.string.notice_biometric_failed),
             )
             return
         }
@@ -355,11 +397,17 @@ class ToolsViewModel @Inject constructor(
         }
     }
 
-    /** v0.3.0: offer to remember the just-unlocked key behind the prompt. */
+    /**
+     * v0.3.0: offer to remember the just-unlocked key behind the prompt.
+     *
+     * v0.5.1 (reported "fingerprint didn't work anywhere"): the Settings
+     * toggle no longer hides the offer — the system prompt ("Remember this
+     * key" / "Not now") is the consent, and success persists the toggle
+     * ON. Turning the toggle OFF still wipes every wrap.
+     */
     fun offerRemember(contactId: ContactId) {
         launchSafely {
-            val enabled = settings.settings.first().biometricUnlockEnabled
-            if (!enabled || !biometricStore.isDeviceCapable()) return@launchSafely
+            if (!biometricStore.isDeviceCapable()) return@launchSafely
             val contactKey = biometricContactKeyFor(contactId) ?: return@launchSafely
             if (!biometricStore.hasWrapped(contactKey)) {
                 _state.value = _state.value.copy(
@@ -369,19 +417,34 @@ class ToolsViewModel @Inject constructor(
         }
     }
 
-    /** v0.3.0: the key bytes the Remember prompt should wrap. */
+    /**
+     * v0.3.0: the key bytes the Remember prompt should wrap.
+     */
     suspend fun consumeRememberKey(): ByteArray? {
         if (_state.value.biometricPrompt !is BiometricPromptRequest.Remember) return null
         val id = lastUnlockedContactId ?: return null
         return messageCipher.exportSessionKey(id)
     }
 
-    /** v0.3.0: prompt finished — [success] says whether the wrap persisted. */
-    fun onRememberDone(success: Boolean) {
+    /**
+     * v0.3.0: prompt finished — [success] says whether the wrap persisted.
+     *
+     * v0.5.1: a persisted wrap turns the Settings toggle ON (the
+     * authenticated "Remember this key" prompt IS the opt-in); a non-cancel
+     * failure surfaces the system's reason instead of silence.
+     */
+    fun onRememberDone(success: Boolean, reason: String? = null) {
         _state.value = _state.value.copy(
             biometricPrompt = null,
             biometricOffered = _state.value.biometricOffered || success,
         )
+        if (success) {
+            launchSafely { settings.setBiometricUnlockEnabled(true) }
+        } else if (reason != null) {
+            _state.value = _state.value.copy(
+                notice = UiNoticeOf(R.string.notice_biometric_failed_reason, reason),
+            )
+        }
     }
 
     private suspend fun currentBiometricContactKey(): String? {
@@ -396,13 +459,13 @@ class ToolsViewModel @Inject constructor(
         return "${contactId.value}:$eraId"
     }
 
-    // ------------------------------------------------------------ results
+    // ------------------------------------------------------------ clipboard
 
     /** Paste the current clipboard text into the input field. */
     fun pasteIntoInput(onPasted: (String) -> Unit) {
         launchSafely {
             val clip = clipboard.read()
-            if (clip is org.cipherkey.security.clipboard.ClipboardRead.Text) {
+            if (clip is ClipboardRead.Text) {
                 onPasted(clip.text)
             } else {
                 _state.value = _state.value.copy(
@@ -410,6 +473,40 @@ class ToolsViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    /**
+     * v0.5.1: "View clipboard" — show WHAT the clipboard holds (bounded
+     * preview, CK1 detection) before pasting. Explicit user action from a
+     * focused activity, exactly like Paste.
+     */
+    fun previewClipboard() {
+        launchSafely {
+            when (val clip = clipboard.read()) {
+                is ClipboardRead.Text -> _state.value = _state.value.copy(
+                    clipboardPreview = ClipboardPreview(
+                        text = clip.text.take(ClipboardPreview.MAX_CHARS),
+                        fullLength = clip.text.length,
+                        truncated = clip.text.length > ClipboardPreview.MAX_CHARS,
+                        isEnvelope = Ck1.isEnvelope(clip.text.trim()),
+                    ),
+                )
+                ClipboardRead.Empty -> _state.value = _state.value.copy(
+                    notice = UiNoticeOf(R.string.notice_clipboard_empty),
+                )
+                is ClipboardRead.NonText -> _state.value = _state.value.copy(
+                    notice = UiNoticeOf(R.string.notice_clipboard_nontext, clip.mimeType ?: "unknown"),
+                )
+                is ClipboardRead.Blocked -> _state.value = _state.value.copy(
+                    notice = UiNoticeOf(R.string.notice_clipboard_blocked, clip.reason ?: "blocked"),
+                )
+            }
+        }
+    }
+
+    /** v0.5.1: close the clipboard preview dialog. */
+    fun dismissClipboardPreview() {
+        _state.value = _state.value.copy(clipboardPreview = null)
     }
 
     /** Copy the result to the clipboard (explicit user action). */
@@ -472,7 +569,14 @@ class ToolsViewModel @Inject constructor(
             )
             is EncryptOutcome.Failed -> _state.value = _state.value.copy(
                 busy = false,
-                notice = UiNoticeOf(R.string.notice_encrypt_failed, out.error.toString()),
+                notice = if (out.error == CryptoError.InputTooLarge) {
+                    // v0.5.1: the char-count guard in MessageCipher rejected
+                    // an oversized draft before any big allocation — say so
+                    // in the same words the companion flows use.
+                    UiNoticeOf(R.string.notice_input_too_long, "${Ck1Limits.MAX_PLAINTEXT_BYTES / 1024}")
+                } else {
+                    UiNoticeOf(R.string.notice_encrypt_failed, out.error.toString())
+                },
             )
         }
     }

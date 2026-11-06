@@ -410,6 +410,44 @@ class MessageCipherTest {
         assertTrue(!device.cipher.isUnlocked(carol.id))
     }
 
+    // --------------------------------------------- v0.5.1 heap pre-flight
+
+    @Test
+    fun `oversized Argon2 profile reports MemoryHungry instead of crashing`() = runTest {
+        // The reported crash: the 256 MiB PARANOID preset on a stock heap.
+        // Emulated with a tiny heap; unlockContact must map the typed
+        // KdfMemoryException to UnlockOutcome.MemoryHungry — never an
+        // OutOfMemoryError escaping to the process.
+        val device = TestDevice(
+            derivator = org.cipherkey.core.crypto.Argon2KeyDerivator(
+                maxHeapBytes = { 256L * 1024 * 1024 },
+            ),
+        )
+        val (contact, _) = device.newContact(
+            "Bob",
+            org.cipherkey.core.crypto.Argon2Params(memoryExponent = 18, iterations = 4, parallelism = 1),
+        )
+        val outcome = device.cipher.unlockContact(contact.id, passphrase.toCharArray())
+        assertTrue("expected MemoryHungry, was $outcome", outcome is UnlockOutcome.MemoryHungry)
+        assertEquals(256L * 1024 * 1024, (outcome as UnlockOutcome.MemoryHungry).requiredBytes)
+        // Nothing was derived, so nothing stayed unlocked.
+        assertFalse(device.cipher.isUnlocked(contact.id))
+    }
+
+    @Test
+    fun `oversized draft is rejected before any big allocation`() = runTest {
+        // The second reported crash shape: pasting a huge text and tapping
+        // Encrypt used to materialise the full UTF-8 encoding (OOM). The
+        // char-count guard rejects it with the typed InputTooLarge error.
+        val device = TestDevice()
+        val (contact, _) = device.newContact("Bob")
+        device.cipher.unlockContact(contact.id, passphrase.toCharArray())
+        val wall = "a".repeat(1024 * 1024)
+        val outcome = device.cipher.encryptDraft(contact.id, wall)
+        assertTrue(outcome is EncryptOutcome.Failed)
+        assertEquals(CryptoError.InputTooLarge, (outcome as EncryptOutcome.Failed).error)
+    }
+
     @Test
     fun `envelope survives leading and trailing whitespace`() = runTest {
         val (sender, receiver) = pairedDevices()

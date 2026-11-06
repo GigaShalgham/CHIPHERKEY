@@ -444,6 +444,10 @@ private fun ContactDetailDialog(
     val unlockedText = stringResource(R.string.contact_session_unlocked)
     val wrongPassphraseText = stringResource(R.string.notice_wrong_passphrase)
     val noEraText = stringResource(R.string.contact_no_era)
+    // v0.5.1: pre-localized with a placeholder — the MiB value only exists
+    // inside the non-composable onUnlock callback, so the localized sentence
+    // is produced here and the number is substituted at callback time.
+    val memoryHungryFormat = stringResource(R.string.notice_kdf_memory, "%1\$s")
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -506,6 +510,10 @@ private fun ContactDetailDialog(
                                         unlockMessage = noEraText
                                     is UnlockOutcome.Rejected -> unlockMessage = outcome.reason
                                     is UnlockOutcome.Failed -> unlockMessage = outcome.reason
+                                    is UnlockOutcome.MemoryHungry -> unlockMessage =
+                                        memoryHungryFormat.format(
+                                            outcome.requiredBytes / (1024L * 1024L),
+                                        )
                                 }
                             }
                         },

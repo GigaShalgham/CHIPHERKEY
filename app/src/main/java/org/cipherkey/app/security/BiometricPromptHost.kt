@@ -21,7 +21,8 @@ fun rememberBiometricPromptHelper(store: BiometricKeyStore): BiometricPromptHelp
  * Renders nothing. While [request] is non-null it launches the matching
  * system fingerprint prompt exactly once:
  *  - [BiometricPromptRequest.Unlock] unwraps the remembered key and returns
- *    the raw bytes (or null on cancel/stale) via [onUnlock];
+ *    the raw bytes (or null on cancel/stale) via [onUnlock], with an
+ *    optional failure reason (v0.5.1);
  *  - [BiometricPromptRequest.Remember] loads the session key with the
  *    SUSPEND loader [loadRememberKey] (deep-scan F1: the key export is an
  *    async DB call — the loader must be awaited INSIDE this effect, never
@@ -39,21 +40,25 @@ fun BiometricPromptHost(
     helper: BiometricPromptHelper?,
     request: BiometricPromptRequest?,
     loadRememberKey: (suspend () -> ByteArray?)?,
-    onUnlock: (ByteArray?) -> Unit,
-    onRememberDone: (Boolean) -> Unit,
+    onUnlock: (ByteArray?, String?) -> Unit,
+    onRememberDone: (Boolean, String?) -> Unit,
 ) {
     LaunchedEffect(request, helper) {
         val prompt = helper ?: return@LaunchedEffect
         when (val current = request) {
             null -> Unit
             is BiometricPromptRequest.Unlock ->
-                prompt.unlockKey(current.contactKey) { keyBytes -> onUnlock(keyBytes) }
+                prompt.unlockKey(current.contactKey) { keyBytes, reason ->
+                    onUnlock(keyBytes, reason)
+                }
             is BiometricPromptRequest.Remember -> {
                 val plain = loadRememberKey?.invoke()
                 if (plain == null) {
-                    onRememberDone(false)
+                    onRememberDone(false, null)
                 } else {
-                    prompt.rememberKey(current.contactKey, plain) { done -> onRememberDone(done) }
+                    prompt.rememberKey(current.contactKey, plain) { done, reason ->
+                        onRememberDone(done, reason)
+                    }
                 }
             }
         }

@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  v0.5.1: Persian (فارسی) translation. Every user-visible string of the
+  default locale, translated; app_name stays the brand name. Persian digits
+  come for free: Android formats %d with the active locale.
+-->
+<resources>
+    <string name="app_name">CipherKey</string>
+    <string name="tagline">رمزنگاری خصوصی برای هر پیام‌رسان — بدون سرور، بدون حساب کاربری</string>
+
+    <!-- Main navigation -->
+    <string name="nav_home">خانه</string>
+    <string name="nav_encrypt">رمزنگاری</string>
+    <string name="nav_decrypt">رمزگشایی</string>
+    <string name="nav_contacts">مخاطبان</string>
+    <string name="nav_settings">تنظیمات</string>
+
+    <!-- Companion entry labels (keep short: OEMs truncate long labels) -->
+    <string name="process_text_encrypt_label">رمزنگاری (CipherKey)</string>
+    <string name="process_text_decrypt_label">رمزگشایی (CipherKey)</string>
+    <string name="share_decrypt_label">رمزگشایی با CipherKey</string>
+
+    <!-- Companion sheet -->
+    <string name="sheet_encrypt">رمزنگاری</string>
+    <string name="sheet_decrypt">رمزگشایی</string>
+    <string name="sheet_from_selection">از متن انتخاب‌شده</string>
+    <string name="sheet_from_share">از اشتراک‌گذاری</string>
+    <string name="sheet_from_clipboard">از کلیپ‌بورد</string>
+    <string name="reading_clipboard">در حال خواندن کلیپ‌بورد…</string>
+    <string name="decrypting">در حال رمزگشایی…</string>
+    <string name="draft_label">پیش‌نویس</string>
+    <string name="passphrase_label">عبارت عبور مشترک</string>
+    <string name="passphrase_for">عبارت عبور برای %1$s</string>
+    <string name="message_from">پیام از %1$s</string>
+    <string name="locked_hint">این نشست قفل است. عبارت عبور مشترک را وارد کنید — یا از اثر انگشت استفاده کنید.</string>
+    <string name="locked_era_hint">این پیام در یک دورهٔ کلید قدیمی‌تر ارسال شده است. برای خواندنش، عبارت عبوری را وارد کنید که برای همان دوره مشترک کرده بودید.</string>
+    <string name="unlock_encrypt_action">باز کردن قفل و رمزنگاری</string>
+    <string name="unlock_decrypt_action">باز کردن قفل و رمزگشایی</string>
+    <string name="use_fingerprint">استفاده از اثر انگشت</string>
+    <string name="session_unlocked_hint">نشست باز است — یک لمس.</string>
+    <string name="result_encrypted_for">رمزنگاری‌شده برای %1$s</string>
+    <string name="result_decrypted_from">رمزگشایی‌شده — از %1$s</string>
+    <string name="envelope_truncated_hint">پاکت کامل به فیلد بازگردانده می‌شود — این پیش‌نمایش کوتاه شده است.</string>
+    <string name="replace_in_field">جایگزینی در فیلد</string>
+    <string name="try_again">تلاش دوباره</string>
+    <string name="close">بستن</string>
+
+    <!-- Generic actions -->
+    <string name="action_copy">کپی</string>
+    <string name="action_done">تمام</string>
+    <string name="action_clear">پاک کردن</string>
+    <string name="action_paste">چسباندن</string>
+    <string name="action_view_clipboard">نمایش کلیپ‌بورد</string>
+    <string name="action_share">اشتراک‌گذاری</string>
+
+    <!-- v0.5.1: clipboard preview dialog -->
+    <string name="clipboard_preview_title">کلیپ‌بورد</string>
+    <string name="clipboard_preview_chars">%1$d نویسه در کلیپ‌بورد</string>
+    <string name="clipboard_preview_chars_truncated">پیش‌نمایش کوتاه شده — در مجموع %1$d نویسه</string>
+
+    <!-- Biometric prompt (system dialog copy) -->
+    <string name="biometric_prompt_title_unlock">باز کردن قفل CipherKey</string>
+    <string name="biometric_prompt_title_remember">به‌خاطر سپردن این کلید</string>
+    <string name="biometric_prompt_subtitle">نشانگر اثر انگشت را لمس کنید</string>
+    <string name="biometric_prompt_negative">فعلاً نه</string>
+
+    <!-- Honest biometric capability reasons -->
+    <string name="biometric_reason_none_enrolled">هیچ اثر انگشتی ثبت نشده است — ابتدا در تنظیمات اندروید یک قفل صفحه و اثر انگشت ثبت کنید.</string>
+    <string name="biometric_reason_no_hardware">این دستگاه نشانگر اثر انگشت ندارد.</string>
+    <string name="biometric_reason_hw_unavailable">نشانگر اثر انگشت در حال حاضر در دسترس نیست — بعداً دوباره امتحان کنید.</string>
+    <string name="biometric_reason_security_update">یک به‌روزرسانی امنیتی در انتظار، بسته‌بندی کلید با اثر انگشت را مسدود کرده است — آن را نصب کنید و دوباره امتحان کنید.</string>
+    <string name="biometric_reason_not_strong">نشانگر این دستگاه از ردهٔ امنیتی Strong (کلاس ۳) که برای بسته‌بندی کلید با پشتوانهٔ سخت‌افزاری لازم است، پشتیبانی نمی‌کند.</string>
+
+    <!-- Floating assistant -->
+    <string name="assistant_channel_name">دستیار شناور</string>
+    <string name="assistant_encrypt">رمزنگاری</string>
+    <string name="assistant_decrypt">رمزگشایی</string>
+    <string name="assistant_encrypt_clipboard">رمزنگاری کلیپ‌بورد</string>
+    <string name="assistant_decrypt_clipboard">رمزگشایی کلیپ‌بورد</string>
+    <string name="assistant_lock_all">قفل همهٔ نشست‌ها</string>
+    <string name="assistant_open_app">باز کردن CipherKey</string>
+    <string name="assistant_turn_off">خاموش کردن دستیار</string>
+    <string name="assistant_hint">در پیام‌رسان‌ها: پیام را کپی کنید، بعد «رمزگشایی کلیپ‌بورد» را بزنید.</string>
+    <string name="assistant_locked_all">همهٔ نشست‌ها قفل شد (%1$d کلید پاک شد)</string>
+    <string name="assistant_locked_all_none">نشست بازی برای قفل‌کردن وجود ندارد</string>
+    <string name="assistant_notification_title">دستیار CipherKey فعال است</string>
+    <string name="assistant_notification_text">حباب را لمس کنید تا کلیپ‌بورد رمزنگاری یا رمزگشایی شود.</string>
+
+    <!-- Home -->
+    <string name="home_status_title">وضعیت</string>
+    <string name="home_status_contacts">مخاطبان: %1$d</string>
+    <string name="home_status_unlocked">باز: %1$d</string>
+    <string name="home_status_locked">همهٔ نشست‌ها قفل است</string>
+    <string name="home_quick_title">اقدامات سریع</string>
+    <string name="home_quick_encrypt_text">رمزنگاری متن</string>
+    <string name="home_quick_decrypt_text">رمزگشایی متن</string>
+    <string name="home_quick_encrypt_clip">رمزنگاری کلیپ‌بورد</string>
+    <string name="home_quick_decrypt_clip">رمزگشایی کلیپ‌بورد</string>
+
+    <!-- In-app tools screens -->
+    <string name="encrypt_title">رمزنگاری</string>
+    <string name="encrypt_subtitle">پیام را بنویسید یا بچسبانید، مخاطب را انتخاب کنید، رمزنگاری کنید.</string>
+    <string name="encrypt_action">رمزنگاری</string>
+    <string name="encrypt_contact_label">رمزنگاری برای</string>
+    <string name="decrypt_title">رمزگشایی</string>
+    <string name="decrypt_subtitle">پیام CK1:… را بچسبانید و متن اصلی را بخوانید.</string>
+    <string name="decrypt_action">رمزگشایی</string>
+    <string name="decrypt_input_label">پیام رمزنگاری‌شده</string>
+    <string name="decrypt_input_hint">پیام CK1:… را اینجا بچسبانید…</string>
+    <string name="decrypt_ck1_detected">پیام CK1 شناسایی شد</string>
+    <string name="tools_input_label">پیام</string>
+    <string name="tools_input_hint">متن را اینجا بنویسید یا بچسبانید…</string>
+
+    <!-- Contact picker -->
+    <string name="contact_choose">انتخاب مخاطب</string>
+    <string name="contact_locked">🔒</string>
+    <string name="contact_unlocked">🔓</string>
+
+    <!-- Contacts -->
+    <string name="contacts_title">مخاطبان</string>
+    <string name="contacts_add">+ افزودن مخاطب</string>
+    <string name="contacts_empty_title">هنوز مخاطبی ندارید</string>
+    <string name="contacts_empty_body">یک مخاطب بسازید، عبارت عبور را حضوری توافق کنید و کد دعوت را یک بار رد و بدل کنید.</string>
+
+    <!-- Contact dialogs -->
+    <string name="contact_new_title">مخاطب جدید</string>
+    <string name="contact_name_label">نام</string>
+    <string name="contact_invite_label">کد دعوت (اختیاری)</string>
+    <string name="contact_invite_help">برای ساختن کلید جدید خالی بگذارید (کد را شما به اشتراک می‌گذارید). برای درون‌ریزی کلید طرف مقابل، کد CKS1:… او را بچسبانید.</string>
+    <string name="contact_argon2_title">قدرت Argon2id</string>
+    <string name="contact_create">ساختن</string>
+    <string name="cancel">لغو</string>
+    <string name="contact_creation_failed">ساختن ناموفق بود — کد دعوت را بررسی کنید و دوباره امتحان کنید.</string>
+    <string name="contact_shared_passphrase_rule">هر دو نفر باید «یک عبارت عبور» را وارد کنند — حضوری توافق کنید. این عبارت هرگز توسط برنامه ارسال یا ذخیره نمی‌شود.</string>
+    <string name="contact_suggest_passphrase">پیشنهاد عبارت عبور قوی (اختیاری)</string>
+    <string name="contact_suggest_hide">پنهان‌کردن پیشنهاد</string>
+    <string name="contact_suggestion_new">پیشنهاد جدید</string>
+    <string name="contact_suggestion_bits">≈ %1$d بیت تضمین‌شده — روی همین دستگاه تولید شده است.</string>
+    <string name="contact_suggestion_warning">آن را حضوری با مخاطبتان در میان بگذارید — هرگز همراه با کد دعوت در یک پیام نفرستید. اگر از آن استفاده می‌کنید، هر دو نفر باید همین عبارت را دقیقاً هنگام باز کردن قفل تایپ کنید.</string>
+    <string name="contact_unlock_hint">برای باز کردن قفل این کلید نشست، عبارت عبور مشترک را وارد کنید.</string>
+    <string name="contact_unlock_action">باز کردن قفل نشست</string>
+    <string name="contact_session_unlocked">نشست باز شد</string>
+    <string name="lock_now_short">قفل فوری</string>
+    <string name="contact_key_fingerprint">اثر انگشت کلید: %1$s</string>
+    <string name="contact_older_eras">%1$d دورهٔ کلید قدیمی‌تر برای تاریخچه نگه‌داری شده است</string>
+    <string name="contact_invite_section">کد دعوت</string>
+    <string name="contact_copy_invite">کپی کد دعوت</string>
+    <string name="contact_share_invite">اشتراک‌گذاری کد دعوت</string>
+    <string name="copied_ok">کپی شد ✓</string>
+    <string name="copy_failed">کپی ناموفق بود — کلیپ‌بورد در دسترس نیست</string>
+    <string name="contact_no_era">هنوز دورهٔ کلیدی وجود ندارد.</string>
+    <string name="contact_era_count_none">بدون دورهٔ کلید</string>
+    <string name="contact_era_count">%1$d دورهٔ کلید</string>
+    <string name="contact_feedback_created">مخاطب ساخته شد</string>
+    <string name="contact_feedback_deleted">مخاطب حذف شد</string>
+    <string name="contact_invite_key_conflict">این کلید دعوت از قبل متعلق به مخاطب دیگری است.</string>
+    <string name="contact_invalid_invite">کد دعوت نامعتبر است: %1$s</string>
+    <string name="contact_creation_invalid">مخاطب ساخته نشد: %1$s</string>
+    <string name="contact_state_unlocked">باز</string>
+    <string name="contact_state_locked">قفل</string>
+    <string name="contact_delete_confirm">این مخاطب و همهٔ داده‌های کلیدش حذف شود؟</string>
+    <string name="contact_delete_yes">بله، حذف شود</string>
+    <string name="contact_delete_keep">نگه داشتن</string>
+    <string name="contact_delete">حذف مخاطب</string>
+
+    <!-- Settings -->
+    <string name="settings_title">تنظیمات</string>
+    <string name="settings_unlock_section">قفل و امنیت</string>
+    <string name="settings_timeout_title">مدت باز ماندن قفل</string>
+    <string name="settings_timeout_summary">کلیدهای باز تا این مدت در حافظه نگه‌داری و سپس پاک می‌شوند. همیشه می‌توانید فوراً قفل کنید.</string>
+    <string name="option_minutes">%1$d دقیقه</string>
+    <string name="option_hours">%1$d ساعت</string>
+    <string name="option_minutes_short">%1$d د</string>
+    <string name="option_hours_short">%1$d س</string>
+    <string name="lock_now">همین حالا همهٔ نشست‌ها قفل شود</string>
+    <string name="settings_biometric_title">باز کردن قفل با اثر انگشت</string>
+    <string name="settings_biometric_summary">هر کلید بازشده را به‌خاطر می‌سپارد، محافظت‌شده با نشانگر اثر انگشت و Keystore اندروید. عبارت عبور همیشه در دسترس می‌ماند.</string>
+    <string name="settings_assistant_title">دستیار شناور</string>
+    <string name="settings_assistant_summary">یک دکمهٔ کوچک و قابل جابه‌جایی روی دیگر برنامه‌ها با اقدامات سریع رمزنگاری / رمزگشایی کلیپ‌بورد.</string>
+    <string name="settings_assistant_needs_overlay">مجوز «نمایش روی دیگر برنامه‌ها» لازم است — این مجوز در تنظیمات اندروید داده می‌شود، نه هنگام اجرا.</string>
+    <string name="settings_assistant_open_settings">باز کردن مجوز</string>
+    <string name="settings_kdf_title">قدرت استخراج کلید (مخاطبان جدید)</string>
+    <string name="settings_kdf_summary">فقط به دوره‌های کلیدی که از این پس ساخته می‌شوند اعمال می‌شود. تنظیمات قوی‌تر، حملهٔ جست‌وجوی فراگیر را به‌تناسب گران‌تر و باز کردن قفل را کمی کندتر می‌کند.</string>
+    <string name="kdf_profile_desc">%1$d مبی‌بایت · %2$d گذر</string>
+    <string name="settings_about_title">درباره</string>
+    <string name="settings_about_version">CipherKey %1$s — همراهِ رمزنگاری local-first.</string>
+    <string name="settings_about_line2">پروتکل CK1 نسخهٔ ۱ · AES-256-GCM · Argon2id (RFC 9106) · مجوز Apache-2.0.</string>
+    <string name="settings_about_line3">حالت کلید عمومی (حالت 0x02 در CK1) مشخص شده اما هنوز یکپارچه نشده است.</string>
+    <string name="state_on">روشن</string>
+    <string name="state_off">خاموش</string>
+
+    <!-- Notices -->
+    <string name="notice_copied">در کلیپ‌بورد کپی شد ✓</string>
+    <string name="notice_biometric_failed">باز کردن قفل با اثر انگشت کامل نشد — از عبارت عبور استفاده کنید.</string>
+    <string name="notice_biometric_failed_reason">باز کردن قفل با اثر انگشت کامل نشد (%1$s) — از عبارت عبور استفاده کنید.</string>
+    <string name="notice_biometric_stale">کلید به‌خاطر سپرده‌شده با اثر انگشت قدیمی شده است (دورهٔ کلید مخاطب عوض شده). به‌جای آن با عبارت عبور قفل را باز کنید.</string>
+    <string name="notice_clipboard_access_failed">دسترسی به کلیپ‌بورد ممکن نشد.</string>
+    <string name="notice_clipboard_blank">متن کلیپ‌بورد خالی است (سفید). متن را کپی کنید، سپس «تلاش دوباره» را بزنید.</string>
+    <string name="notice_clipboard_blocked">اندروید دسترسی به کلیپ‌بورد را مسدود کرد (%1$s). وقتی CipherKey در پیش‌زمینه است، «تلاش دوباره» را بزنید.</string>
+    <string name="notice_clipboard_empty">کلیپ‌بورد خالی است. ابتدا متن را کپی کنید، سپس «تلاش دوباره» را بزنید.</string>
+    <string name="notice_clipboard_nontext">کلیپ‌بورد محتوای غیرمتنی دارد (%1$s). CipherKey فقط متن را پردازش می‌کند — متن را کپی کنید و «تلاش دوباره» را بزنید.</string>
+    <string name="notice_decrypt_failed">رمزگشایی ناموفق بود — پیام خراب است یا دستکاری شده است.</string>
+    <string name="notice_empty_input">ابتدا پیامی بنویسید یا بچسبانید.</string>
+    <string name="notice_encrypt_failed">رمزنگاری ناموفق بود: %1$s</string>
+    <string name="notice_input_too_long">متن از %1$s کیبی‌بایت بلندتر است و نمی‌توان آن را به‌صورت یک پیام پردازش کرد.</string>
+    <string name="notice_no_contact_selected">ابتدا یک مخاطب انتخاب کنید.</string>
+    <string name="notice_no_contacts">هنوز مخاطبی ندارید. ابتدا CipherKey را باز کنید و مخاطبی با عبارت عبور مشترک بسازید.</string>
+    <string name="notice_no_era">این مخاطب هنوز دورهٔ کلیدی ندارد. برنامه را باز کنید، مخاطب را باز کنید و ابتدا کلیدی بسازید یا درون‌ریزی کنید.</string>
+    <string name="notice_no_selection_encrypt">متنی انتخاب نشده است. متن پیش‌نویس را انتخاب کنید و دوباره امتحان کنید.</string>
+    <string name="notice_no_selection_decrypt">متنی انتخاب نشده است. کل پیام «CK1:…» را انتخاب کنید و دوباره امتحان کنید.</string>
+    <string name="notice_not_envelope">این متن یک پیام رمزنگاری‌شدهٔ CK1 نیست. کل پیام «CK1:…» را انتخاب کنید و دوباره امتحان کنید.</string>
+    <string name="notice_nothing_shared">چیزی به اشتراک گذاشته نشد. متن پیام «CK1:…» را با CipherKey به اشتراک بگذارید.</string>
+    <string name="notice_nothing_to_encrypt">چیزی برای رمزنگاری نیست.</string>
+    <string name="notice_oversized_encrypt">متن انتخاب‌شده از %1$s کیبی‌بایت بلندتر است و نمی‌توان آن را به‌صورت یک پیام رمزنگاری کرد.</string>
+    <string name="notice_oversized_decrypt">متن انتخاب‌شده از %1$s کیبی‌بایت بلندتر است و پاکت CK1 معتبری نیست.</string>
+    <string name="notice_oversized_shared">متن به‌اشتراک‌گذاشته‌شده از %1$s کیبی‌بایت بلندتر است و پاکت CK1 معتبری نیست.</string>
+    <string name="notice_passphrase_rejected">عبارت عبور رد شد: %1$s</string>
+    <string name="notice_unknown_key">کلید این پیام روی این دستگاه نیست. ابتدا کد دعوت مخاطب را درون‌ریزی کنید.</string>
+    <string name="notice_unlock_failed">باز کردن قفل ناموفق بود: %1$s</string>
+    <string name="notice_kdf_memory">این دورهٔ کلید برای Argon2id به %1$s مبی‌بایت حافظه نیاز دارد — این دستگاه نمی‌تواند تأمینش کند. از مخاطب بخواهید دورهٔ جدیدی با قدرت کمتر بسازد، یا از دستگاه قوی‌تری استفاده کنید.</string>
+    <string name="notice_wrong_passphrase">عبارت عبور نادرست است.</string>
+    <string name="notice_unexpected_error">خطای غیرمنتظره: %1$s</string>
+
+    <!-- Passphrase advisor -->
+    <string name="passphrase_strength_weak">ضعیف — به‌راحتی حدس زده می‌شود</string>
+    <string name="passphrase_strength_fair">متوسط — می‌تواند قوی‌تر باشد</string>
+    <string name="passphrase_strength_strong">قوی</string>
+    <string name="passphrase_strength_summary">قدرت: %1$s · ≈ %2$d بیت</string>
+
+    <!-- Contacts FAB / empty-state CTA -->
+    <string name="contacts_add_contact">افزودن مخاطب</string>
+
+    <!-- Settings "Features" section -->
+    <string name="settings_features_section">ویژگی‌ها</string>
+
+    <!-- Launcher app shortcuts -->
+    <string name="shortcut_encrypt_short">رمزنگاری</string>
+    <string name="shortcut_encrypt_long">رمزنگاری کلیپ‌بورد</string>
+    <string name="shortcut_decrypt_short">رمزگشایی</string>
+    <string name="shortcut_decrypt_long">رمزگشایی کلیپ‌بورد</string>
+</resources>

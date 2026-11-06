@@ -236,11 +236,18 @@ class ContactsViewModel @Inject constructor(
         }
     }
 
-    /** v0.4.1: outcome of the system prompt (null = canceled / failed). */
-    fun onBiometricUnlockResult(keyBytes: ByteArray?) {
+    /**
+     * v0.4.1: outcome of the system prompt (null = canceled / failed).
+     *
+     * v0.5.1: [reason] carries the system's localized message for
+     * non-cancel failures so the dialog notice explains what happened.
+     */
+    fun onBiometricUnlockResult(keyBytes: ByteArray?, reason: String? = null) {
         _biometricPrompt.value = null
         if (keyBytes == null) {
-            _dialogNotice.value = UiNotice(R.string.notice_biometric_failed, null)
+            _dialogNotice.value = reason?.let {
+                UiNotice(R.string.notice_biometric_failed_reason, it)
+            } ?: UiNotice(R.string.notice_biometric_failed, null)
             return
         }
         val id = dialogContactId
@@ -283,12 +290,18 @@ class ContactsViewModel @Inject constructor(
         }
     }
 
-    /** v0.4.1: after a passphrase unlock, offer to remember the key. */
+    /**
+     * v0.4.1: after a passphrase unlock, offer to remember the key.
+     *
+     * v0.5.1 (reported "fingerprint didn't work anywhere"): the Settings
+     * toggle no longer hides the offer — the system prompt ("Remember this
+     * key" / "Not now") is the consent, and success persists the toggle
+     * ON. Turning the toggle OFF still wipes every wrap.
+     */
     fun offerRemember(contactId: ContactId) {
         viewModelScope.launch {
-            val enabled = settings.settings.first().biometricUnlockEnabled
             val gate = BiometricDiagnostics.gateFor(biometricStore.strongAuthResult())
-            if (!enabled || gate != BiometricGate.AVAILABLE) return@launch
+            if (gate != BiometricGate.AVAILABLE) return@launch
             val key = biometricContactKeyFor(contactId) ?: return@launch
             lastUnlockedContactId = contactId
             if (!biometricStore.hasWrapped(key)) {
@@ -304,10 +317,21 @@ class ContactsViewModel @Inject constructor(
         return messageCipher.exportSessionKey(id)
     }
 
-    /** v0.4.1: prompt finished — [success] says whether the wrap persisted. */
-    fun onRememberDone(success: Boolean) {
+    /**
+     * v0.4.1: prompt finished — [success] says whether the wrap persisted.
+     *
+     * v0.5.1: a persisted wrap turns the Settings toggle ON (the
+     * authenticated "Remember this key" prompt IS the opt-in); a non-cancel
+     * failure surfaces the system's reason instead of silence.
+     */
+    fun onRememberDone(success: Boolean, reason: String? = null) {
         _biometricPrompt.value = null
         _biometricOffered.value = _biometricOffered.value || success
+        if (success) {
+            viewModelScope.launch { settings.setBiometricUnlockEnabled(true) }
+        } else if (reason != null) {
+            _dialogNotice.value = UiNotice(R.string.notice_biometric_failed_reason, reason)
+        }
     }
 
     /** `"contactId:eraId"` — the AAD and storage key for a remembered wrap. */

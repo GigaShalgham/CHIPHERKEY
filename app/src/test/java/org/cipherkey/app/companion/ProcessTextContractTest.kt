@@ -102,6 +102,22 @@ class ProcessTextContractTest {
         assertTrue(ProcessTextContract.parseEnvelope(huge) is SelectedText.Oversized)
     }
 
+    // v0.5.1: the character-count guard. A multi-megabyte selection/share
+    // used to allocate its FULL UTF-8 encoding before the size check and
+    // OOM-crash the app; it must now be rejected by the cheap length check.
+    @Test fun multiMegabyteSelectionIsRejectedWithoutEncodingIt() {
+        val oneMiB = "a".repeat(1024 * 1024)
+        assertTrue(ProcessTextContract.parsePlaintext(oneMiB) is SelectedText.Oversized)
+        assertTrue(ProcessTextContract.parseEnvelope(oneMiB) is SelectedText.Oversized)
+    }
+
+    @Test fun oversizedMultibyteTextIsRejectedByCharCountAlone() {
+        // 100k Persian chars = 200k UTF-8 bytes — far over the plaintext cap
+        // on both counts; the char guard fires before any byte allocation.
+        val persianWall = "م".repeat(100_000)
+        assertTrue(ProcessTextContract.parsePlaintext(persianWall) is SelectedText.Oversized)
+    }
+
     // ---------------------------------------------------------- envelopes
 
     @Test fun envelopePrefixIsDetected() =

@@ -48,7 +48,13 @@
     <string name="action_done">Done</string>
     <string name="action_clear">Clear</string>
     <string name="action_paste">Paste</string>
+    <string name="action_view_clipboard">View clipboard</string>
     <string name="action_share">Share</string>
+
+    <!-- v0.5.1: clipboard preview dialog ("View clipboard" button). -->
+    <string name="clipboard_preview_title">Clipboard</string>
+    <string name="clipboard_preview_chars">%1$d characters on the clipboard</string>
+    <string name="clipboard_preview_chars_truncated">Preview truncated — %1$d characters in total</string>
 
     <!-- Biometric prompt (system dialog copy) -->
     <string name="biometric_prompt_title_unlock">Unlock CipherKey</string>
@@ -68,6 +74,15 @@
     <string name="assistant_channel_name">Floating assistant</string>
     <string name="assistant_encrypt">Encrypt</string>
     <string name="assistant_decrypt">Decrypt</string>
+    <!-- v0.5.1: labeled panel rows (was three bare icons). -->
+    <string name="assistant_encrypt_clipboard">Encrypt clipboard</string>
+    <string name="assistant_decrypt_clipboard">Decrypt clipboard</string>
+    <string name="assistant_lock_all">Lock all sessions</string>
+    <string name="assistant_open_app">Open CipherKey</string>
+    <string name="assistant_turn_off">Turn off assistant</string>
+    <string name="assistant_hint">In messengers: copy the message, then tap "Decrypt clipboard".</string>
+    <string name="assistant_locked_all">All sessions locked (%1$d wiped)</string>
+    <string name="assistant_locked_all_none">No unlocked sessions to lock</string>
     <string name="assistant_notification_title">CipherKey assistant active</string>
     <string name="assistant_notification_text">Tap the bubble to encrypt or decrypt the clipboard.</string>
 
@@ -162,6 +177,9 @@
     <string name="settings_timeout_summary">Unlocked keys are held in memory for this long and then wiped. You can always lock immediately.</string>
     <string name="option_minutes">%1$d min</string>
     <string name="option_hours">%1$d h</string>
+    <!-- v0.5.1: compact timeout chips (Settings shrank, user feedback). -->
+    <string name="option_minutes_short">%1$dm</string>
+    <string name="option_hours_short">%1$dh</string>
     <string name="lock_now">Lock all sessions now</string>
     <string name="settings_biometric_title">Fingerprint unlock</string>
     <string name="settings_biometric_summary">Remember each unlocked key, protected by the fingerprint sensor and the Android Keystore. The passphrase always remains available.</string>
@@ -182,6 +200,7 @@
     <!-- Notices -->
     <string name="notice_copied">Copied to clipboard ✓</string>
     <string name="notice_biometric_failed">Fingerprint unlock did not complete — use the passphrase.</string>
+    <string name="notice_biometric_failed_reason">Fingerprint unlock did not complete (%1$s) — use the passphrase.</string>
     <string name="notice_biometric_stale">The remembered fingerprint key is out of date (the contact\'s key era changed). Unlock with the passphrase instead.</string>
     <string name="notice_clipboard_access_failed">Could not access the clipboard.</string>
     <string name="notice_clipboard_blank">The clipboard text is empty (blank). Copy the text, then tap Try again.</string>
@@ -206,6 +225,7 @@
     <string name="notice_passphrase_rejected">Passphrase rejected: %1$s</string>
     <string name="notice_unknown_key">The key for this message is not on this device. Import the contact\'s invite code first.</string>
     <string name="notice_unlock_failed">Unlock failed: %1$s</string>
+    <string name="notice_kdf_memory">This key era needs %1$s MiB of memory for Argon2id — this device cannot provide it. Ask the contact to create a new era with a lower strength, or use a stronger device.</string>
     <string name="notice_wrong_passphrase">Wrong passphrase.</string>
     <string name="notice_unexpected_error">Unexpected error: %1$s</string>
 

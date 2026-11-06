@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1-alpha] - 2026-11-06 — user-reported fixes batch
+
+All six items below come from one user test pass on v0.5.0-alpha.
+
+### Fixed
+
+- **Fingerprint unlock never worked anywhere (HIGH).** Three stacked
+  causes, all fixed:
+  - `androidx.biometric` 1.1.0 (2021) silently failed to show the system
+    prompt with `BIOMETRIC_STRONG` + `CryptoObject` on several OEM builds
+    of Android 12+ — upgraded to the maintained **1.2.0-alpha05** line.
+  - The **Remember-key offer was hidden behind the Settings toggle**
+    (default off), so after a passphrase unlock the fingerprint was never
+    offered anywhere unless the user had found the toggle first. The
+    system prompt itself ("Remember this key" / "Not now") is now the
+    consent: the offer appears after every passphrase unlock on a capable
+    device, and success persists the toggle ON. Turning the toggle OFF
+    still wipes every wrap — semantics unchanged.
+  - Failures were **silent or generic**. The prompt helper now runs a
+    `canAuthenticate(BIOMETRIC_STRONG)` pre-flight before even building
+    the prompt (localized reason via `BiometricDiagnostics.reasonRes`),
+    and non-cancel authentication errors surface the system's own message
+    in the notice ("Fingerprint unlock did not complete (…) — use the
+    passphrase."). Cancels stay quiet on purpose.
+- **256 MiB encryption crashed the app (HIGH).** Two distinct OOM paths:
+  - The PARANOID Argon2id preset (256 MiB) allocates one contiguous
+    256 MiB `int[]`; on a stock heap (128–256 MB) that threw
+    `OutOfMemoryError` through the unlock path and killed the process.
+    A pre-flight heap check (`Argon2MemoryGuard`, 1.25× headroom) now
+    rejects impossible profiles BEFORE allocating, the repository maps
+    the typed `KdfMemoryException` to a new
+    `UnlockOutcome.MemoryHungry`, and the UI answers with a localized
+    "this era needs N MiB — pick a lower strength" notice. The manifest
+    also gains `largeHeap` so capable devices can actually run the
+    preset.
+  - A multi-hundred-KiB/MiB paste/share/selection was size-checked by
+    first materialising its **full UTF-8 encoding** (`toByteArray`) —
+    itself the crash. Both `ProcessTextContract` and
+    `MessageCipher.encryptDraft` now reject on the cheap character count
+    first (a UTF-8 byte is never shorter than a char) and never allocate
+    the encoding of an oversized input.
+
+### Added
+
+- **Persian (فارسی) translation** — a complete `values-fa` string set for
+  every user-visible string; RTL was already supported
+  (`supportsRtl`). Persian digits come from locale-aware formatting.
+- **View clipboard** button next to Paste (Encrypt and Decrypt tabs): a
+  bounded preview dialog (first 400 chars, total length, CK1-envelope
+  detection, monospace for envelopes) so you can see WHAT the clipboard
+  holds before pasting it.
+- **Floating assistant panel, rebuilt** (it "was too weak, no options"):
+  labeled rows instead of three bare icons — **Encrypt clipboard**,
+  **Decrypt clipboard**, **Lock all sessions** (wipes every in-memory
+  key, confirmed by a toast), **Open CipherKey**, **Turn off assistant** —
+  plus an in-messenger hint line ("copy the message, then tap Decrypt
+  clipboard"). The panel still never reads the clipboard itself (Android
+  10+ denies that to unfocused windows; no app can read another app's
+  selection in Telegram's custom menu — docs/COMPATIBILITY.md).
+
+### Changed
+
+- **Settings re-ordered and slimmed**: the everyday **Features** section
+  now leads the screen; the session-timeout card ("lock session time")
+  lost its pinned top slot and shrank from seven 40dp radio rows plus a
+  full-width 48dp button to a single chip row plus a compact lock button
+  (user feedback: "not very necessary so unpin it from top and make it
+  smaller").
+
 ## [0.5.0-alpha] - 2026-11-06 — the "Calm Vault" redesign + messenger fallback shortcuts
 
 ### Added

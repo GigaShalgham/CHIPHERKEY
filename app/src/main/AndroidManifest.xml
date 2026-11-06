@@ -17,6 +17,12 @@
       With both features disabled (the default), the app behaves exactly
       like v0.2: no permission is requested, no service runs, and there is
       no network code.
+
+      v0.5.1 largeHeap: the opt-in PARANOID Argon2id profile (256 MiB) needs
+      one contiguous 256 MiB array; a stock heap caps at 128-256 MB. The
+      pre-flight guard in Argon2KeyDerivator still rejects the profile with
+      an honest notice when even the large heap cannot serve it — this flag
+      only lets capable devices actually run it.
     -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -29,6 +35,7 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:largeHeap="true"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.CipherKey">

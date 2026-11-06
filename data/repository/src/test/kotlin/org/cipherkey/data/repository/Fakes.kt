@@ -96,12 +96,14 @@ class MutableTimeSource(var now: Long = 1_000_000L) : TimeSource {
  * device-bound Android Keystore) and its own in-memory session manager.
  * Two devices in one test emulate the sender's and the receiver's phones.
  *
- * The protector is injectable so tests can also emulate a FAILING Keystore
- * (deep-scan finding 2: infrastructure errors must not be reported as
- * "wrong passphrase").
+ * The protector and the derivator are injectable so tests can also emulate
+ * a FAILING Keystore (deep-scan finding 2: infrastructure errors must not
+ * be reported as "wrong passphrase") and a SMALL ANDROID HEAP (v0.5.1:
+ * the Argon2id pre-flight must reject oversized profiles gracefully).
  */
 class TestDevice(
     val protector: org.cipherkey.core.keys.KeyProtector = FixedKeyProtector(),
+    val derivator: Argon2KeyDerivator = Argon2KeyDerivator(),
 ) {
     val contactDao = FakeContactDao()
     val sessionKeyDao = FakeSessionKeyDao()
@@ -121,7 +123,7 @@ class TestDevice(
 
     /** Unconfined derive context: Argon2id runs inline with fast test params. */
     val sessions = KeySessionManager(
-        derivator = Argon2KeyDerivator(),
+        derivator = derivator,
         timeSource = time,
         deriveContext = Dispatchers.Unconfined,
     )
