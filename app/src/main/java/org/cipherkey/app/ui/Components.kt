@@ -10,11 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -25,6 +24,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -307,13 +307,22 @@ fun ResultBlock(
     }
 }
 
-/** Passphrase input + submit row shared by every unlock card. */
+/** Passphrase input + submit row shared by every unlock card.
+ *
+ * v0.5.2: [allowSuggestion] adds the "Suggest a strong passphrase"
+ * affordance right at the password-entry moment (user request) — but only
+ * where it is honest: the caller passes it only when THIS side is choosing
+ * the passphrase (a locally created era that was never unlocked). An
+ * imported era means the peer already picked the passphrase.
+ */
 @Composable
 fun PassphraseInput(
     label: String,
     buttonLabel: String,
     busy: Boolean,
     onSubmit: (CharArray) -> Unit,
+    allowSuggestion: Boolean = false,
+    onCopySensitive: ((String) -> Boolean)? = null,
 ) {
     var passphrase by remember { mutableStateOf("") }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -330,6 +339,12 @@ fun PassphraseInput(
         )
         // v0.4.0: live strength hint while the user types.
         PassphraseStrengthHint(passphrase)
+        if (allowSuggestion && onCopySensitive != null) {
+            SuggestPassphraseSection(
+                onUse = { passphrase = it },
+                onCopySensitive = onCopySensitive,
+            )
+        }
         Button(
             onClick = {
                 onSubmit(passphrase.toCharArray())
@@ -340,6 +355,76 @@ fun PassphraseInput(
                 .fillMaxWidth()
                 .heightIn(min = 48.dp),
         ) { Text(buttonLabel) }
+    }
+}
+
+/**
+ * v0.5.2: the strong-passphrase suggestion, AT the password-entry point
+ * (user request: "you should offer it when entering the password").
+ * Collapsed by default; "Use" fills the field above, "New one" rerolls,
+ * "Copy" uses the SENSITIVE clipboard path and never lands in the
+ * clipboard history.
+ */
+@Composable
+fun SuggestPassphraseSection(
+    onUse: (String) -> Unit,
+    onCopySensitive: (String) -> Boolean,
+) {
+    var visible by remember { mutableStateOf(false) }
+    if (!visible) {
+        TextButton(onClick = { visible = true }) {
+            Text(stringResourceCompat(R.string.passphrase_suggest_action))
+        }
+        return
+    }
+    var suggestion by remember { mutableStateOf(PassphraseAdvisor.recommend()) }
+    var copied by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        SelectionContainer {
+            Text(
+                suggestion,
+                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Text(
+            stringResourceCompat(
+                R.string.contact_suggestion_bits,
+                PassphraseAdvisor.GUARANTEED_BITS,
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { onUse(suggestion) }) {
+                Text(stringResourceCompat(R.string.passphrase_suggestion_use))
+            }
+            TextButton(onClick = {
+                suggestion = PassphraseAdvisor.recommend()
+                copied = false
+            }) {
+                Text(stringResourceCompat(R.string.passphrase_suggestion_new))
+            }
+            TextButton(onClick = { copied = onCopySensitive(suggestion) }) {
+                Text(stringResourceCompat(R.string.action_copy))
+            }
+            TextButton(onClick = { visible = false }) {
+                Text(stringResourceCompat(R.string.contact_suggest_hide))
+            }
+        }
+        if (copied) {
+            Text(
+                stringResourceCompat(R.string.passphrase_suggestion_copied),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Text(
+            stringResourceCompat(R.string.passphrase_suggestion_first_warning),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -541,67 +626,61 @@ fun BusyLine(visible: Boolean) {
 }
 
 /**
- * v0.5.1: "View clipboard" dialog — WHAT is on the clipboard before
- * pasting it. Bounded preview (never the full text: a multi-megabyte clip
- * would freeze the dialog), a CK1 detection line, the total length, and
- * the same Paste action the field row offers.
+ * v0.5.2: the clipboard HISTORY dialog (user request: "the list of things
+ * you copied and had copied before") — replaces the v0.5.1 single-clip
+ * preview. Tap an entry to paste it into the field; the per-row ✕ deletes
+ * it; "Clear history" wipes the list. The current clip is recorded when
+ * the dialog opens, so it always sits on top.
  */
 @Composable
-fun ClipboardPreviewDialog(
-    preview: org.cipherkey.app.ClipboardPreview,
-    onPaste: () -> Unit,
+fun ClipboardHistoryDialog(
+    entries: List<org.cipherkey.data.repository.ClipboardHistoryEntry>,
+    onUse: (org.cipherkey.data.repository.ClipboardHistoryEntry) -> Unit,
+    onDelete: (Long) -> Unit,
+    onClearAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResourceCompat(R.string.clipboard_preview_title)) },
+        title = { Text(stringResourceCompat(R.string.clipboard_history_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (preview.isEnvelope) {
+                if (entries.isEmpty()) {
                     Text(
-                        stringResourceCompat(R.string.decrypt_ck1_detected),
+                        stringResourceCompat(R.string.clipboard_history_empty),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 12.dp),
                     )
-                }
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    SelectionContainer {
-                        Text(
-                            text = preview.text,
-                            style = if (preview.isEnvelope) {
-                                MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
-                            } else {
-                                MaterialTheme.typography.bodyMedium
-                            },
-                            modifier = Modifier
-                                .padding(10.dp)
-                                .heightIn(max = 220.dp)
-                                .verticalScroll(rememberScrollState()),
-                        )
+                } else {
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 340.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(
+                            count = entries.size,
+                            key = { entries[it].id },
+                        ) { index ->
+                            ClipboardHistoryRow(
+                                entry = entries[index],
+                                onUse = { onUse(entries[index]) },
+                                onDelete = { onDelete(entries[index].id) },
+                            )
+                        }
                     }
                 }
-                Text(
-                    text = stringResourceCompat(
-                        if (preview.truncated) {
-                            R.string.clipboard_preview_chars_truncated
-                        } else {
-                            R.string.clipboard_preview_chars
-                        },
-                        preview.fullLength,
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         },
         confirmButton = {
-            androidx.compose.material3.TextButton(onClick = onPaste) {
-                Text(stringResourceCompat(R.string.action_paste))
+            if (entries.isNotEmpty()) {
+                androidx.compose.material3.TextButton(onClick = onClearAll) {
+                    Text(
+                        stringResourceCompat(R.string.action_clear_history),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
         },
         dismissButton = {
@@ -610,6 +689,88 @@ fun ClipboardPreviewDialog(
             }
         },
     )
+}
+
+/** One history row: bounded preview, age + CK1 + truncated meta, ✕ delete. */
+@Composable
+private fun ClipboardHistoryRow(
+    entry: org.cipherkey.data.repository.ClipboardHistoryEntry,
+    onUse: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Surface(
+        onClick = onUse,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(start = 10.dp, top = 8.dp, bottom = 8.dp, end = 2.dp),
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(
+                    text = entry.text,
+                    style = if (entry.isEnvelope) {
+                        MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                    } else {
+                        MaterialTheme.typography.bodyMedium
+                    },
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = clipboardAgeLabel(entry.capturedAt),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (entry.isEnvelope) {
+                        Text(
+                            stringResourceCompat(R.string.clipboard_history_ck1_tag),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    if (entry.truncated) {
+                        Text(
+                            stringResourceCompat(R.string.clipboard_history_truncated),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
+                }
+            }
+            androidx.compose.material3.IconButton(onClick = onDelete) {
+                Icon(
+                    CipherKeyIcons.Close,
+                    contentDescription = stringResourceCompat(R.string.clipboard_history_delete_entry),
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** "just now" / "3 min ago" / "2 h ago" / "5 d ago" for a history row. */
+@Composable
+private fun clipboardAgeLabel(capturedAt: Long): String {
+    val now = System.currentTimeMillis()
+    val minutes = (now - capturedAt) / 60_000L
+    return when {
+        minutes < 1 -> stringResourceCompat(R.string.clipboard_history_just_now)
+        minutes < 60 -> stringResourceCompat(R.string.clipboard_history_minutes_ago, minutes)
+        minutes < 60 * 24 -> stringResourceCompat(R.string.clipboard_history_hours_ago, minutes / 60)
+        else -> stringResourceCompat(R.string.clipboard_history_days_ago, minutes / (60 * 24))
+    }
 }
 
 /** stringResource indirection so the private helpers above stay short. */

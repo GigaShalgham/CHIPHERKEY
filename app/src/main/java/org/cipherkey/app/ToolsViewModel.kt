@@ -17,16 +17,19 @@ import org.cipherkey.app.security.BiometricPromptRequest
 import org.cipherkey.core.common.ContactId
 import org.cipherkey.core.common.SessionId
 import org.cipherkey.core.crypto.CryptoError
-import org.cipherkey.core.messages.Ck1
 import org.cipherkey.core.messages.Ck1Limits
 import org.cipherkey.core.sessions.wipe
 import org.cipherkey.data.preferences.SettingsRepository
+import org.cipherkey.data.repository.ClipboardHistoryEntry
+import org.cipherkey.data.repository.ClipboardHistoryRepository
 import org.cipherkey.data.repository.Contact
 import org.cipherkey.data.repository.ContactRepository
 import org.cipherkey.data.repository.DecryptOutcome
 import org.cipherkey.data.repository.EncryptOutcome
 import org.cipherkey.data.repository.MessageCipher
+import org.cipherkey.data.repository.SessionKeyRepository
 import org.cipherkey.data.repository.UnlockOutcome
+import org.cipherkey.app.clipboard.ClipboardHistoryRecorder
 import org.cipherkey.security.clipboard.ClipboardAccess
 import org.cipherkey.security.clipboard.ClipboardRead
 
@@ -61,31 +64,20 @@ data class ToolsUiState(
     val biometricOffered: Boolean = false,
     /** v0.3.0: non-null while the system biometric prompt should be shown. */
     val biometricPrompt: BiometricPromptRequest? = null,
-    /** v0.5.1: clipboard preview dialog payload (null = dialog closed). */
-    val clipboardPreview: ClipboardPreview? = null,
+    /**
+     * v0.5.2: non-null while the pending unlock is the FIRST passphrase
+     * choice for a locally created era (no friend invite entered) — the only
+     * situation where suggesting a strong passphrase is honest (an imported
+     * era means the peer already picked the passphrase the user must type).
+     */
+    val suggestPassphrase: Boolean = false,
+    /** v0.5.2: entries shown while the clipboard-history dialog is open. */
+    val clipboardHistory: List<ClipboardHistoryEntry> = emptyList(),
+    /** v0.5.2: true while the clipboard-history dialog is on screen. */
+    val clipboardHistoryOpen: Boolean = false,
 ) {
     val selectedContact: Contact?
         get() = contacts.firstOrNull { it.id == selectedContactId }
-}
-
-/**
- * v0.5.1: what the "View clipboard" dialog shows — a bounded preview of
- * the current clip, never the full text (a multi-megabyte clip would
- * freeze the dialog; the Paste action still inserts everything).
- */
-data class ClipboardPreview(
-    /** First [ClipboardPreview.MAX_CHARS] characters of the clip. */
-    val text: String,
-    /** Total character count of the full clip. */
-    val fullLength: Int,
-    /** True when [text] had to be cut short. */
-    val truncated: Boolean,
-    /** True when the clip starts with the CK1 envelope prefix. */
-    val isEnvelope: Boolean,
-) {
-    companion object {
-        const val MAX_CHARS = 400
-    }
 }
 
 /**
@@ -100,8 +92,11 @@ data class ClipboardPreview(
 class ToolsViewModel @Inject constructor(
     private val messageCipher: MessageCipher,
     private val contactsRepository: ContactRepository,
+    private val sessionKeys: SessionKeyRepository,
     private val settings: SettingsRepository,
     private val clipboard: ClipboardAccess,
+    private val clipboardHistoryRepository: ClipboardHistoryRepository,
+    private val clipboardRecorder: ClipboardHistoryRecorder,
     private val biometricStore: BiometricKeyStore,
 ) : ViewModel() {
 
@@ -464,11 +459,15 @@ class ToolsViewModel @Inject constructor(
     /** Paste the current clipboard text into the input field. */
     fun pasteIntoInput(onPasted: (String) -> Unit) {
         launchSafely {
-            val clip = clipboard.read()
-            if (clip is ClipboardRead.Text) {
-                onPasted(clip.text)
-            } else {
-                _state.value = _state.value.copy(
+            when (val clip = clipboard.read()) {
+                is ClipboardRead.Text -> {
+                    // v0.5.2: an explicit Paste is one of the capture points
+                    // of the clipboard history (explicit user action from a
+                    // focused activity).
+                    clipboardRecorder.recordReadText(clip.text)
+                    onPasted(clip.text)
+                }
+                else -> _state.value = _state.value.copy(
                     notice = UiNoticeOf(R.string.notice_clipboard_empty),
                 )
             }
@@ -476,37 +475,62 @@ class ToolsViewModel @Inject constructor(
     }
 
     /**
-     * v0.5.1: "View clipboard" — show WHAT the clipboard holds (bounded
-     * preview, CK1 detection) before pasting. Explicit user action from a
-     * focused activity, exactly like Paste.
+     * v0.5.2: opens the clipboard HISTORY (user request: "the list of
+     * things you copied and had copied before"). Opening the dialog is an
+     * explicit user action from a focused activity, so the current clip is
+     * read + recorded first — it then always appears as the newest entry.
      */
-    fun previewClipboard() {
+    fun openClipboardHistory() {
         launchSafely {
-            when (val clip = clipboard.read()) {
-                is ClipboardRead.Text -> _state.value = _state.value.copy(
-                    clipboardPreview = ClipboardPreview(
-                        text = clip.text.take(ClipboardPreview.MAX_CHARS),
-                        fullLength = clip.text.length,
-                        truncated = clip.text.length > ClipboardPreview.MAX_CHARS,
-                        isEnvelope = Ck1.isEnvelope(clip.text.trim()),
-                    ),
-                )
-                ClipboardRead.Empty -> _state.value = _state.value.copy(
-                    notice = UiNoticeOf(R.string.notice_clipboard_empty),
-                )
-                is ClipboardRead.NonText -> _state.value = _state.value.copy(
-                    notice = UiNoticeOf(R.string.notice_clipboard_nontext, clip.mimeType ?: "unknown"),
-                )
-                is ClipboardRead.Blocked -> _state.value = _state.value.copy(
-                    notice = UiNoticeOf(R.string.notice_clipboard_blocked, clip.reason ?: "blocked"),
-                )
+            val clip = clipboard.read()
+            if (clip is ClipboardRead.Text) {
+                clipboardRecorder.recordReadText(clip.text)
             }
+            _state.value = _state.value.copy(
+                clipboardHistory = clipboardHistoryRepository.snapshot(),
+                clipboardHistoryOpen = true,
+                notice = null,
+            )
         }
     }
 
-    /** v0.5.1: close the clipboard preview dialog. */
-    fun dismissClipboardPreview() {
-        _state.value = _state.value.copy(clipboardPreview = null)
+    /** v0.5.2: closes the history dialog. */
+    fun dismissClipboardHistory() {
+        _state.value = _state.value.copy(clipboardHistoryOpen = false)
+    }
+
+    /** v0.5.2: deletes one history entry (the per-row ✕). */
+    fun deleteClipboardEntry(id: Long) {
+        launchSafely {
+            clipboardHistoryRepository.delete(id)
+            _state.value = _state.value.copy(
+                clipboardHistory = clipboardHistoryRepository.snapshot(),
+            )
+        }
+    }
+
+    /** v0.5.2: wipes the whole history ("Clear history" in the dialog). */
+    fun clearClipboardHistory() {
+        launchSafely {
+            clipboardHistoryRepository.clear()
+            _state.value = _state.value.copy(
+                clipboardHistory = emptyList(),
+                notice = UiNoticeOf(R.string.clipboard_history_cleared),
+            )
+        }
+    }
+
+    /**
+     * v0.5.2: copies a SUGGESTED PASSPHRASE — sensitive: the sensitive
+     * clipboard path (hidden preview on Android 13+) and NEVER recorded in
+     * the history.
+     */
+    fun copyPassphrase(text: String): Boolean {
+        val copied = clipboard.setSensitiveText(text)
+        if (copied) {
+            clipboardRecorder.onSensitiveCopied(text)
+        }
+        return copied
     }
 
     /** Copy the result to the clipboard (explicit user action). */
@@ -519,6 +543,9 @@ class ToolsViewModel @Inject constructor(
             clipboard.setText(result)
         }
         _state.value = if (copied) {
+            // v0.5.2: envelopes (public by design) join the history so they
+            // can be re-pasted; decrypted plaintext never does.
+            if (!sensitive) clipboardRecorder.onCopied(result)
             _state.value.copy(copied = true)
         } else {
             _state.value.copy(notice = UiNoticeOf(R.string.notice_clipboard_access_failed))
@@ -556,6 +583,10 @@ class ToolsViewModel @Inject constructor(
             is EncryptOutcome.NeedsUnlock -> _state.value = _state.value.copy(
                 busy = false,
                 unlockNeeded = true,
+                // v0.5.2: offer the passphrase suggestion only when THIS side
+                // is choosing the passphrase (locally created era, never
+                // unlocked here) — see SessionKeyRepository.awaitingFirstPassphrase.
+                suggestPassphrase = sessionKeys.awaitingFirstPassphrase(contactId),
                 pendingContactId = contactId,
                 unlockContactName = _state.value.selectedContact?.displayName,
             ).also { refreshBiometricOffer() }
@@ -594,6 +625,7 @@ class ToolsViewModel @Inject constructor(
             is DecryptOutcome.NeedsUnlock -> _state.value = _state.value.copy(
                 busy = false,
                 unlockNeeded = true,
+                suggestPassphrase = sessionKeys.awaitingFirstPassphrase(out.contactId),
                 pendingContactId = out.contactId,
                 unlockContactName = out.contactName,
                 pendingEraSessionId = null,
@@ -609,6 +641,10 @@ class ToolsViewModel @Inject constructor(
             is DecryptOutcome.NeedsEraUnlock -> _state.value = _state.value.copy(
                 busy = false,
                 unlockNeeded = true,
+                suggestPassphrase = sessionKeys.awaitingFirstPassphrase(
+                    out.contactId,
+                    out.eraSessionId,
+                ),
                 pendingContactId = out.contactId,
                 unlockContactName = out.contactName,
                 pendingEraSessionId = out.eraSessionId,

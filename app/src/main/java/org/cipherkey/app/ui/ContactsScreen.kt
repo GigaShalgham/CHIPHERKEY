@@ -167,7 +167,9 @@ fun ContactsScreen(viewModel: ContactsViewModel, biometrics: BiometricKeyStore) 
                     if (ok) showAddDialog = false
                 }
             },
-            onCopyPassphrase = { text -> viewModel.copyText(text) },
+            // v0.5.2: suggested passphrases copy through the SENSITIVE path
+            // and never enter the clipboard history.
+            onCopyPassphrase = viewModel::copySensitiveText,
         )
     }
 
@@ -193,6 +195,7 @@ fun ContactsScreen(viewModel: ContactsViewModel, biometrics: BiometricKeyStore) 
                 detailContact = null
             },
             onCopyInvite = { text -> viewModel.copyText(text) },
+            onCopyPassphrase = viewModel::copySensitiveText,
             onDismiss = { detailContact = null },
         )
     }
@@ -252,7 +255,7 @@ private fun ContactCard(
 private fun AddContactDialog(
     onDismiss: () -> Unit,
     onCreate: (String, String?, Argon2Profile, (Boolean, UiNotice?) -> Unit) -> Unit,
-    onCopyPassphrase: (String) -> Unit,
+    onCopyPassphrase: (String) -> Boolean,
 ) {
     var name by remember { mutableStateOf("") }
     var invite by remember { mutableStateOf("") }
@@ -316,6 +319,9 @@ private fun AddContactDialog(
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    // v0.5.2: no friend invite entered → THIS side picks the
+                    // shared passphrase, so the suggestion is offered (user
+                    // report); with an invite, the peer already picked it.
                     OptionalPassphraseSuggestion(onCopy = onCopyPassphrase)
                 }
                 Text(
@@ -371,7 +377,7 @@ private fun AddContactDialog(
  * give each side a DIFFERENT passphrase).
  */
 @Composable
-private fun OptionalPassphraseSuggestion(onCopy: (String) -> Unit) {
+private fun OptionalPassphraseSuggestion(onCopy: (String) -> Boolean) {
     var visible by remember { mutableStateOf(false) }
     if (!visible) {
         TextButton(onClick = { visible = true }) {
@@ -425,6 +431,7 @@ private fun ContactDetailDialog(
     onLock: () -> Unit,
     onDelete: () -> Unit,
     onCopyInvite: (String) -> Boolean,
+    onCopyPassphrase: (String) -> Boolean,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -436,6 +443,12 @@ private fun ContactDetailDialog(
     var inviteCopyMessage by remember { mutableStateOf<String?>(null) }
 
     val latestEra = eras.firstOrNull()
+
+    // v0.5.2: the suggestion is offered at the password-entry moment — but
+    // only when THIS side is choosing the passphrase: the latest era was
+    // created locally (no friend invite) and never unlocked here. An
+    // imported era means the peer already picked the passphrase.
+    val suggestPassphrase = latestEra?.awaitingFirstPassphrase == true
 
     // v0.4.1 CI fix: hoisted into composable scope — stringResource cannot be
     // called from the non-composable onClick / onUnlock callbacks.
@@ -471,6 +484,14 @@ private fun ContactDetailDialog(
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     )
+                    if (suggestPassphrase) {
+                        // v0.5.2: strong-passphrase suggestion AT the entry
+                        // point (fills the field above; copies sensitively).
+                        org.cipherkey.app.ui.SuggestPassphraseSection(
+                            onUse = { passphrase = it },
+                            onCopySensitive = onCopyPassphrase,
+                        )
+                    }
                     if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                     unlockMessage?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary) }
                     notice?.let { n ->

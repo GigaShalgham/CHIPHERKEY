@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.cipherkey.app.assistant.AssistantReadiness
 import org.cipherkey.app.assistant.FloatingAssistantService
+import org.cipherkey.app.clipboard.ClipboardHistoryRecorder
 import org.cipherkey.app.security.BiometricKeyStore
 import org.cipherkey.app.ui.CipherKeyApp
 import org.cipherkey.app.ui.theme.CipherKeyTheme
@@ -43,6 +44,10 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var settingsRepository: SettingsRepository
 
+    /** v0.5.2: records the current clip into the history when the app gains focus. */
+    @Inject
+    lateinit var clipboardHistory: ClipboardHistoryRecorder
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // v0.4.2 (deep-scan, FLAG_SECURE): CipherKey's surfaces show decrypted
@@ -62,6 +67,22 @@ class MainActivity : FragmentActivity() {
             }
         }
         maybeAutoStartAssistant()
+    }
+
+    /**
+     * v0.5.2: the app now OWNS the focused window — the one moment Android
+     * 10+ serves the clipboard to a foreground app. This is how copies made
+     * in other apps (a message in a messenger, a code, …) land in the
+     * clipboard history WITHOUT any background listener: the user copied
+     * something, then brought CipherKey to the front. The recorder honours
+     * the Settings toggle, coalesces dialog-induced focus flips and never
+     * stores sensitive clips.
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            clipboardHistory.captureFromFocusedWindow()
+        }
     }
 
     /**

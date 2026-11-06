@@ -64,6 +64,9 @@ class SessionKeyRepository(
                 iterations = params.iterations,
                 parallelism = params.parallelism,
                 wrappedKey = null,
+                // v0.5.2: locally created — THIS side picks the shared
+                // passphrase (see ContactSession.awaitingFirstPassphrase).
+                imported = false,
                 createdAt = now,
                 lastUsedAt = null,
             )
@@ -93,6 +96,9 @@ class SessionKeyRepository(
                 iterations = invite.params.iterations,
                 parallelism = invite.params.parallelism,
                 wrappedKey = null,
+                // v0.5.2: imported from the peer's invite — the PEER already
+                // picked the shared passphrase; never suggest a new one here.
+                imported = true,
                 createdAt = now,
                 lastUsedAt = null,
             )
@@ -130,6 +136,23 @@ class SessionKeyRepository(
     suspend fun eraBySessionId(sessionId: SessionId): ContactSession? = withContext(dispatchers.io) {
         sessionKeyDao.bySessionId(sessionId.value)?.toDomain()
     }
+
+    /**
+     * v0.5.2: whether the passphrase field for this era should offer the
+     * "suggest a strong passphrase" action — true only when THIS side
+     * created the era (no friend invite entered) and never unlocked it here
+     * (the shared passphrase is being chosen right now). [sessionId] null =
+     * the contact's latest era.
+     */
+    suspend fun awaitingFirstPassphrase(contactId: ContactId, sessionId: SessionId? = null): Boolean =
+        withContext(dispatchers.io) {
+            val entity = if (sessionId != null) {
+                sessionKeyDao.bySessionId(sessionId.value)
+            } else {
+                sessionKeyDao.latestByContact(contactId.value)
+            }
+            entity != null && !entity.imported && entity.wrappedKey == null
+        }
 
     suspend fun erasForContact(contactId: ContactId): List<ContactSession> =
         withContext(dispatchers.io) {
@@ -172,6 +195,7 @@ class SessionKeyRepository(
         ),
         createdAt = createdAt,
         hasWrappedKey = wrappedKey != null,
+        imported = imported,
         lastUsedAt = lastUsedAt,
     )
 }

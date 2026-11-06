@@ -32,6 +32,8 @@ data class AppSettings(
     val biometricUnlockEnabled: Boolean = false,
     /** v0.3.0: floating assistant overlay (opt-in, off by default). */
     val assistantEnabled: Boolean = false,
+    /** v0.5.2: clipboard history capture (on by default; sensitive copies are never stored). */
+    val clipboardHistoryEnabled: Boolean = true,
 )
 
 class SettingsRepository(
@@ -50,6 +52,7 @@ class SettingsRepository(
             onboardingCompleted = prefs[KEY_ONBOARDING_COMPLETED] ?: false,
             biometricUnlockEnabled = prefs[KEY_BIOMETRIC_UNLOCK] ?: false,
             assistantEnabled = prefs[KEY_ASSISTANT_ENABLED] ?: false,
+            clipboardHistoryEnabled = prefs[KEY_CLIPBOARD_HISTORY] ?: true,
         )
     }
 
@@ -85,6 +88,13 @@ class SettingsRepository(
         }
     }
 
+    /** v0.5.2: toggles clipboard-history capture (never stores sensitive copies). */
+    suspend fun setClipboardHistoryEnabled(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[KEY_CLIPBOARD_HISTORY] = enabled
+        }
+    }
+
     /**
      * Sticky companion contact: the last contact the user encrypted for,
      * so the PROCESS_TEXT encrypt flow usually needs zero extra taps
@@ -115,6 +125,7 @@ class SettingsRepository(
         private val KEY_LAST_CONTACT_ID = stringPreferencesKey("last_contact_id")
         private val KEY_BIOMETRIC_UNLOCK = booleanPreferencesKey("biometric_unlock_enabled")
         private val KEY_ASSISTANT_ENABLED = booleanPreferencesKey("assistant_enabled")
+        private val KEY_CLIPBOARD_HISTORY = booleanPreferencesKey("clipboard_history_enabled")
 
         /** Factory for the process-wide DataStore instance. */
         fun defaultDataStore(context: Context): DataStore<Preferences> = context.cipherKeyDataStore

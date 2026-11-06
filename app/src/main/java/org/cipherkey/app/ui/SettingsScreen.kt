@@ -156,6 +156,24 @@ fun SettingsScreen(
                     )
                 }) { Text(stringResource(R.string.settings_assistant_open_settings)) }
             }
+
+            // --------------------------------------- clipboard history (v0.5.2)
+
+            SettingSwitchRow(
+                title = stringResource(R.string.settings_clipboard_history_title),
+                subtitle = stringResource(R.string.settings_clipboard_history_summary),
+                checked = settings.clipboardHistoryEnabled,
+                enabled = true,
+                onCheckedChange = viewModel::setClipboardHistoryEnabled,
+            )
+            if (settings.clipboardHistoryEnabled) {
+                TextButton(onClick = viewModel::clearClipboardHistory) {
+                    Text(
+                        stringResource(R.string.action_clear_history),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
         }
 
         // ------------------------------------------------ session & security

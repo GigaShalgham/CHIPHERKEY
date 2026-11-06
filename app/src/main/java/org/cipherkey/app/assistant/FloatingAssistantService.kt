@@ -66,6 +66,9 @@ import org.cipherkey.data.repository.MessageCipher
  *   Encrypt clipboard · Decrypt clipboard · Lock all sessions ·
  *   Open CipherKey · Turn off — plus the messenger hint line.
  *
+ * v0.5.2: a header ✕ collapses the panel with NO action (before, the only
+ * ways out were performing an action or turning the assistant off).
+ *
  * The overlay needs SYSTEM_ALERT_WINDOW ("Display over other apps"), which
  * cannot be requested at runtime — Settings deep-links the user to it.
  */
@@ -165,7 +168,7 @@ class FloatingAssistantService : Service() {
         panel = panelView
     }
 
-    /** Vertical action panel — labeled rows, dark surface, hint footer. */
+    /** Vertical action panel — header with ✕, labeled rows, hint footer. */
     private fun buildPanel(density: Float): LinearLayout =
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -177,6 +180,13 @@ class FloatingAssistantService : Service() {
             val vPad = (10 * density).toInt()
             setPadding(hPad, vPad, hPad, vPad)
             visibility = View.GONE
+
+            // v0.5.2 header: a ✕ that just COLLAPSES the panel back to the
+            // bubble — user report: "you can't close or minimize it without
+            // doing something; it has no close button". Every row performs an
+            // action and 'Turn off' killed the service entirely; this is the
+            // no-op way out.
+            addView(panelHeader(density))
 
             addView(
                 panelRow(
@@ -231,6 +241,62 @@ class FloatingAssistantService : Service() {
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT,
                     ).apply { topMargin = (6 * density).toInt() }
+                },
+            )
+        }
+
+    /**
+     * v0.5.2: panel header — small "CipherKey" caption on the left, a ✕
+     * (40 dp touch target) on the right that collapses the panel WITHOUT
+     * running anything. The bubble comes back; the service keeps running.
+     */
+    private fun panelHeader(density: Float): View =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(
+                (12 * density).toInt(),
+                (4 * density).toInt(),
+                (4 * density).toInt(),
+                (4 * density).toInt(),
+            )
+            addView(
+                TextView(this@FloatingAssistantService).apply {
+                    text = getString(R.string.assistant_panel_title)
+                    textSize = 12f
+                    setTextColor(Color.argb(190, 168, 176, 200))
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    layoutParams = LinearLayout.LayoutParams(
+                        0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        1f,
+                    )
+                },
+            )
+            addView(
+                ImageView(this@FloatingAssistantService).apply {
+                    setImageResource(R.drawable.ic_assistant_close)
+                    contentDescription = getString(R.string.assistant_close_panel)
+                    background = RippleDrawable(
+                        ColorStateList.valueOf(Color.argb(40, 255, 255, 255)),
+                        GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(Color.TRANSPARENT)
+                        },
+                        null,
+                    )
+                    setPadding(
+                        (11 * density).toInt(),
+                        (11 * density).toInt(),
+                        (11 * density).toInt(),
+                        (11 * density).toInt(),
+                    )
+                    isClickable = true
+                    setOnClickListener { collapsePanel() }
+                    layoutParams = LinearLayout.LayoutParams(
+                        (40 * density).toInt(),
+                        (40 * density).toInt(),
+                    )
                 },
             )
         }

@@ -24,7 +24,9 @@ import org.cipherkey.data.repository.ContactRepository
 import org.cipherkey.data.repository.DecryptOutcome
 import org.cipherkey.data.repository.EncryptOutcome
 import org.cipherkey.data.repository.MessageCipher
+import org.cipherkey.data.repository.SessionKeyRepository
 import org.cipherkey.data.repository.UnlockOutcome
+import org.cipherkey.app.clipboard.ClipboardHistoryRecorder
 import org.cipherkey.security.clipboard.ClipboardAccess
 import org.cipherkey.security.clipboard.ClipboardRead
 
@@ -80,6 +82,13 @@ data class CompanionUiState(
     val biometricOffered: Boolean = false,
     /** v0.3.0: non-null while the system biometric prompt should be shown. */
     val biometricPrompt: BiometricPromptRequest? = null,
+    /**
+     * v0.5.2: the passphrase field should offer the strong-passphrase
+     * suggestion — true only when the era being unlocked was created
+     * LOCALLY (no friend invite entered) and never unlocked on this device,
+     * i.e. THIS side is choosing the shared passphrase right now.
+     */
+    val suggestPassphrase: Boolean = false,
 ) {
     enum class Phase { Idle, Prepare, NeedsUnlock, Result, Notice }
 
@@ -102,8 +111,10 @@ data class CompanionUiState(
 class CompanionViewModel @Inject constructor(
     private val messageCipher: MessageCipher,
     private val contactsRepository: ContactRepository,
+    private val sessionKeys: SessionKeyRepository,
     private val settings: SettingsRepository,
     private val clipboard: ClipboardAccess,
+    private val clipboardRecorder: ClipboardHistoryRecorder,
     private val biometrics: BiometricKeyStore,
 ) : ViewModel() {
 
@@ -183,6 +194,9 @@ class CompanionViewModel @Inject constructor(
             selectedContactId = id,
             notice = null,
         )
+        // v0.5.2: the prepare card's passphrase field follows the selected
+        // contact — recompute whether the suggestion is honest for it.
+        refreshSuggestPassphrase()
     }
 
     fun dismissNotice() {
@@ -226,7 +240,10 @@ class CompanionViewModel @Inject constructor(
                     phase = CompanionUiState.Phase.NeedsUnlock,
                     pendingContactId = id,
                     pendingContactName = s.selectedContact?.displayName,
-                ).also { refreshBiometricOffer() }
+                ).also {
+                    refreshBiometricOffer()
+                    refreshSuggestPassphrase()
+                }
                 is EncryptOutcome.NoSession -> _state.value = _state.value.copy(
                     busy = false,
                     notice = UiNotice(R.string.notice_no_era),
@@ -285,13 +302,66 @@ class CompanionViewModel @Inject constructor(
         // secret by definition.
         val copied = if (sensitive) clipboard.setSensitiveText(result) else clipboard.setText(result)
         _state.value = if (copied) {
+            // v0.5.2: envelopes join the clipboard history (re-pasteable);
+            // decrypted plaintext NEVER does.
+            if (sensitive) {
+                clipboardRecorder.onSensitiveCopied(result)
+            } else {
+                clipboardRecorder.onCopied(result)
+            }
             _state.value.copy(copied = true)
         } else {
             _state.value.copy(notice = UiNotice(R.string.notice_clipboard_access_failed))
         }
     }
 
+    /**
+     * v0.5.2: copies a SUGGESTED PASSPHRASE — sensitive clipboard path
+     * (hidden preview on Android 13+), never recorded in the history.
+     */
+    fun copyPassphrase(text: String): Boolean {
+        val copied = clipboard.setSensitiveText(text)
+        if (copied) {
+            clipboardRecorder.onSensitiveCopied(text)
+        }
+        return copied
+    }
+
     // ------------------------------------------------------------ biometric
+
+    /**
+     * v0.5.2: recomputes `suggestPassphrase` for the passphrase field that
+     * is currently on screen (prepare card = selected contact; unlock card
+     * = pending contact, optionally a superseded era).
+     */
+    private fun refreshSuggestPassphrase() {
+        launchSafely {
+            val s = _state.value
+            val target: Pair<ContactId, SessionId?>? = when (s.phase) {
+                CompanionUiState.Phase.NeedsUnlock -> {
+                    val contactId = s.pendingContactId ?: s.selectedContactId
+                    if (contactId != null) contactId to s.pendingEraSessionId else null
+                }
+                CompanionUiState.Phase.Prepare ->
+                    if (s.selectedContactId != null && !s.selectedContactUnlocked) {
+                        s.selectedContactId to null
+                    } else {
+                        null
+                    }
+                else -> null
+            }
+            if (target == null) {
+                if (s.suggestPassphrase) {
+                    _state.value = s.copy(suggestPassphrase = false)
+                }
+                return@launchSafely
+            }
+            val (id, era) = target
+            _state.value = _state.value.copy(
+                suggestPassphrase = sessionKeys.awaitingFirstPassphrase(id, era),
+            )
+        }
+    }
 
     /**
      * v0.3.0: recompute whether the unlock card should offer the
@@ -491,13 +561,19 @@ class CompanionViewModel @Inject constructor(
         // with the default "Encrypt" (deep-scan finding 4).
         _state.value = _state.value.copy(mode = mode)
         when (val clip = clipboard.read()) {
-            is ClipboardRead.Text -> when (
-                val parsed = if (mode == CompanionMode.ENCRYPT) {
-                    ProcessTextContract.parsePlaintext(clip.text)
-                } else {
-                    ProcessTextContract.parseEnvelope(clip.text)
-                }
-            ) {
+            is ClipboardRead.Text -> {
+                // v0.5.2: this focus-gated read (the assistant's "Encrypt/
+                // Decrypt clipboard" rows and the Home buttons route here)
+                // is one of the history capture points — the message copied
+                // in the messenger lands in the list.
+                clipboardRecorder.recordReadText(clip.text)
+                when (
+                    val parsed = if (mode == CompanionMode.ENCRYPT) {
+                        ProcessTextContract.parsePlaintext(clip.text)
+                    } else {
+                        ProcessTextContract.parseEnvelope(clip.text)
+                    }
+                ) {
                 is ProcessTextContract.SelectedText.Valid ->
                     if (mode == CompanionMode.ENCRYPT) {
                         startEncryptFlow(parsed.text, TextSource.CLIPBOARD, readOnly = true)
@@ -514,6 +590,7 @@ class CompanionViewModel @Inject constructor(
                     ),
                     retryable = false,
                 )
+                }
             }
             ClipboardRead.Empty -> clipboardNotice(
                 UiNotice(R.string.notice_clipboard_empty),
@@ -576,6 +653,10 @@ class CompanionViewModel @Inject constructor(
                     UiNotice(R.string.notice_no_contacts)
                 } else null,
             )
+            // v0.5.2: the prepare card may show a passphrase field for the
+            // sticky (locked) contact — compute whether the suggestion is
+            // honest for it.
+            refreshSuggestPassphrase()
         }
     }
 
@@ -620,7 +701,10 @@ class CompanionViewModel @Inject constructor(
                 pendingContactName = out.contactName,
                 pendingEraSessionId = null,
                 busy = false,
-            ).also { refreshBiometricOffer() }
+            ).also {
+                refreshBiometricOffer()
+                refreshSuggestPassphrase()
+            }
             DecryptOutcome.NotAnEnvelope -> _state.value = _state.value.copy(
                 phase = CompanionUiState.Phase.Notice,
                 busy = false,
@@ -640,7 +724,7 @@ class CompanionViewModel @Inject constructor(
                 // A fingerprint wrap is bound to the contact's LATEST era —
                 // it can never serve a superseded-era envelope.
                 biometricOffered = false,
-            )
+            ).also { refreshSuggestPassphrase() }
             is DecryptOutcome.Failed -> _state.value = _state.value.copy(
                 phase = CompanionUiState.Phase.Notice,
                 busy = false,

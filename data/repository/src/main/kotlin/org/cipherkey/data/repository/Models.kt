@@ -31,6 +31,8 @@ data class ContactSession(
     val params: Argon2Params,
     val createdAt: Long,
     val hasWrappedKey: Boolean,
+    /** v0.5.2: true when the era arrived via the peer's CKS1 invite. */
+    val imported: Boolean,
     val lastUsedAt: Long?,
 ) {
     /** The public invite carrying this era's parameters. */
@@ -41,6 +43,17 @@ data class ContactSession(
     val inviteCode: String
         get() = InviteCodec.encode(invite)
 
+    /**
+     * v0.5.2: THIS device is choosing the shared passphrase right now — the
+     * era was created locally (no friend invite was entered, so this side
+     * invents the passphrase) and it has never been unlocked here (the
+     * passphrase is not established yet). Only then is a "suggest a strong
+     * passphrase" affordance honest; an imported era means the peer already
+     * picked the passphrase the user must type.
+     */
+    val awaitingFirstPassphrase: Boolean
+        get() = !imported && !hasWrappedKey
+
     override fun equals(other: Any?): Boolean =
         other is ContactSession &&
             sessionId == other.sessionId &&
@@ -50,6 +63,7 @@ data class ContactSession(
             params == other.params &&
             createdAt == other.createdAt &&
             hasWrappedKey == other.hasWrappedKey &&
+            imported == other.imported &&
             lastUsedAt == other.lastUsedAt
 
     override fun hashCode(): Int {
@@ -60,6 +74,7 @@ data class ContactSession(
         result = 31 * result + params.hashCode()
         result = 31 * result + createdAt.hashCode()
         result = 31 * result + hasWrappedKey.hashCode()
+        result = 31 * result + imported.hashCode()
         result = 31 * result + (lastUsedAt?.hashCode() ?: 0)
         return result
     }

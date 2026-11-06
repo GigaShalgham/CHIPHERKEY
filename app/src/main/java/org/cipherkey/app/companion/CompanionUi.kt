@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.cipherkey.app.R
 import org.cipherkey.app.ui.PassphraseStrengthHint
+import org.cipherkey.app.ui.SuggestPassphraseSection
 import org.cipherkey.app.security.rememberBiometricPromptHelper
 import org.cipherkey.app.security.BiometricPromptHost
 import org.cipherkey.core.common.ContactId
@@ -70,6 +71,8 @@ fun CompanionSheet(
     onBiometricUnlock: (ByteArray?, String?) -> Unit = { _, _ -> },
     loadRememberKey: (suspend () -> ByteArray?)? = null,
     onRememberDone: (Boolean, String?) -> Unit = { _, _ -> },
+    /** v0.5.2: sensitive copy for the passphrase suggestion (never recorded). */
+    onCopyPassphrase: (String) -> Boolean = { false },
 ) {
     val promptHelper = biometrics?.let { rememberBiometricPromptHelper(it) }
 
@@ -113,7 +116,7 @@ fun CompanionSheet(
 
             CompanionUiState.Phase.Prepare ->
                 if (state.mode == CompanionMode.ENCRYPT) {
-                    EncryptPrepareCard(state, onContactSelected, onEncrypt, onUnlockEncrypt)
+                    EncryptPrepareCard(state, onContactSelected, onEncrypt, onUnlockEncrypt, onCopyPassphrase)
                 } else {
                     // Decrypt transient state: work already in flight.
                     Column(
@@ -131,6 +134,7 @@ fun CompanionSheet(
                     state = state,
                     onUnlockDecrypt = onUnlockDecrypt,
                     onUseFingerprint = onRequestBiometricUnlock,
+                    onCopyPassphrase = onCopyPassphrase,
                 )
 
             CompanionUiState.Phase.Result ->
@@ -197,6 +201,7 @@ private fun EncryptPrepareCard(
     onContactSelected: (ContactId) -> Unit,
     onEncrypt: () -> Unit,
     onUnlockEncrypt: (CharArray) -> Unit,
+    onCopyPassphrase: (String) -> Boolean,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
@@ -231,6 +236,10 @@ private fun EncryptPrepareCard(
                 buttonLabel = stringResource(R.string.unlock_encrypt_action),
                 busy = state.busy,
                 onSubmit = onUnlockEncrypt,
+                // v0.5.2: suggestion only when THIS side is choosing the
+                // shared passphrase (locally created era, never unlocked).
+                allowSuggestion = state.suggestPassphrase,
+                onCopySensitive = onCopyPassphrase,
             )
         } else {
             Button(
@@ -308,6 +317,7 @@ private fun UnlockCard(
     state: CompanionUiState,
     onUnlockDecrypt: (CharArray) -> Unit,
     onUseFingerprint: () -> Unit,
+    onCopyPassphrase: (String) -> Boolean,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
@@ -333,6 +343,10 @@ private fun UnlockCard(
             buttonLabel = stringResource(R.string.unlock_decrypt_action),
             busy = state.busy,
             onSubmit = onUnlockDecrypt,
+            // v0.5.2: suggestion only when THIS side is choosing the shared
+            // passphrase (locally created era, never unlocked here).
+            allowSuggestion = state.suggestPassphrase,
+            onCopySensitive = onCopyPassphrase,
         )
         // v0.3.0: remembered fingerprint wrap for this contact's era.
         if (state.biometricOffered) {
@@ -351,6 +365,8 @@ private fun PassphraseField(
     buttonLabel: String,
     busy: Boolean,
     onSubmit: (CharArray) -> Unit,
+    allowSuggestion: Boolean = false,
+    onCopySensitive: ((String) -> Boolean)? = null,
 ) {
     var passphrase by remember { mutableStateOf("") }
 
@@ -368,6 +384,12 @@ private fun PassphraseField(
         )
         // v0.4.0: live strength hint while the user types.
         PassphraseStrengthHint(passphrase)
+        if (allowSuggestion && onCopySensitive != null) {
+            SuggestPassphraseSection(
+                onUse = { passphrase = it },
+                onCopySensitive = onCopySensitive,
+            )
+        }
         Button(
             onClick = {
                 // Convert to CharArray for the crypto path (which wipes it)

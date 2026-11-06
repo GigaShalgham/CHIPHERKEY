@@ -99,8 +99,9 @@ fun EncryptScreen(
                     }) {
                         Text(stringResource(R.string.action_paste))
                     }
-                    // v0.5.1: see WHAT the clipboard holds before pasting.
-                    OutlinedButton(onClick = viewModel::previewClipboard) {
+                    // v0.5.2: the clipboard HISTORY ("things you copied and
+                    // had copied before") — tap an entry to insert it.
+                    OutlinedButton(onClick = viewModel::openClipboardHistory) {
                         Text(stringResource(R.string.action_view_clipboard))
                     }
                 }
@@ -121,6 +122,7 @@ fun EncryptScreen(
                         state = state,
                         onSubmit = viewModel::unlockAndContinue,
                         onUseFingerprint = viewModel::requestBiometricUnlock,
+                        onCopyPassphrase = viewModel::copyPassphrase,
                     )
                 } else {
                     Button(
@@ -134,15 +136,17 @@ fun EncryptScreen(
 
         NoticeBanner(state.notice)
 
-        // v0.5.1: clipboard preview dialog ("View clipboard").
-        state.clipboardPreview?.let { preview ->
-            ClipboardPreviewDialog(
-                preview = preview,
-                onPaste = {
-                    viewModel.dismissClipboardPreview()
-                    viewModel.pasteIntoInput { input = it }
+        // v0.5.2: clipboard history dialog ("Clipboard" next to Paste).
+        if (state.clipboardHistoryOpen) {
+            ClipboardHistoryDialog(
+                entries = state.clipboardHistory,
+                onUse = { entry ->
+                    viewModel.dismissClipboardHistory()
+                    input = entry.text
                 },
-                onDismiss = viewModel::dismissClipboardPreview,
+                onDelete = viewModel::deleteClipboardEntry,
+                onClearAll = viewModel::clearClipboardHistory,
+                onDismiss = viewModel::dismissClipboardHistory,
             )
         }
 
@@ -178,6 +182,7 @@ private fun UnlockCard(
     state: org.cipherkey.app.ToolsUiState,
     onSubmit: (CharArray) -> Unit,
     onUseFingerprint: () -> Unit,
+    onCopyPassphrase: (String) -> Boolean,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -190,6 +195,12 @@ private fun UnlockCard(
             buttonLabel = stringResource(R.string.unlock_encrypt_action),
             busy = state.busy,
             onSubmit = onSubmit,
+            // v0.5.2: the suggestion appears at the password-entry moment,
+            // but only when this side is CHOOSING the passphrase (a locally
+            // created era, never unlocked) — an imported era means the peer
+            // already picked it.
+            allowSuggestion = state.suggestPassphrase,
+            onCopySensitive = onCopyPassphrase,
         )
         if (state.biometricOffered) {
             OutlinedButton(

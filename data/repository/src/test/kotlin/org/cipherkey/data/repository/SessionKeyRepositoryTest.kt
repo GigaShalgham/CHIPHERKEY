@@ -22,6 +22,48 @@ class SessionKeyRepositoryTest {
         assertEquals(2, device.sessionKeyDao.state.value.size)
     }
 
+    // ------------------------------------------------- v0.5.2 awaitingFirstPassphrase
+
+    @Test
+    fun `a locally created era awaits its first passphrase`() = runTest {
+        val device = TestDevice()
+        val (contact, era) = device.newContact("Bob")
+        // No friend invite was entered and the era was never unlocked here:
+        // THIS side is choosing the shared passphrase right now.
+        assertTrue(era.awaitingFirstPassphrase)
+        assertTrue(device.sessionKeys.awaitingFirstPassphrase(contact.id))
+        assertTrue(device.sessionKeys.awaitingFirstPassphrase(contact.id, era.sessionId))
+    }
+
+    @Test
+    fun `an imported era never awaits a first passphrase`() = runTest {
+        val device = TestDevice()
+        val contact = device.contacts.createContact("Alice")
+        val invite = SessionInvite(ByteArray(16) { 7 }, ByteArray(16) { 8 }, TestDevice.FAST_PARAMS)
+        val imported = device.sessionKeys.importEra(contact.id, invite) as EraImport.Imported
+        // The peer already picked the passphrase — suggesting one is dishonest.
+        assertTrue(!imported.era.awaitingFirstPassphrase)
+        assertTrue(!device.sessionKeys.awaitingFirstPassphrase(contact.id))
+    }
+
+    @Test
+    fun `a locally created era stops awaiting after the first unlock stores a wrap`() = runTest {
+        val device = TestDevice()
+        val (contact, era) = device.newContact("Bob")
+        // First unlock on this device persists the wrapped verifier…
+        device.sessionKeys.storeWrappedKey(era.sessionId, byteArrayOf(1, 2, 3))
+        // …so the passphrase is now established: no more suggestion.
+        assertTrue(!device.sessionKeys.awaitingFirstPassphrase(contact.id))
+        assertTrue(!device.sessionKeys.awaitingFirstPassphrase(contact.id, era.sessionId))
+    }
+
+    @Test
+    fun `a contact without eras never awaits a passphrase`() = runTest {
+        val device = TestDevice()
+        val contact = device.contacts.createContact("Ghost")
+        assertTrue(!device.sessionKeys.awaitingFirstPassphrase(contact.id))
+    }
+
     @Test
     fun `latestEra returns the newest era`() = runTest {
         val device = TestDevice()

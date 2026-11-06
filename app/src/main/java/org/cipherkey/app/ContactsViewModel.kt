@@ -29,6 +29,7 @@ import org.cipherkey.data.repository.SessionKeyRepository
 import org.cipherkey.data.repository.UnlockOutcome
 import org.cipherkey.core.messages.Ck1FormatException
 import org.cipherkey.core.messages.InviteCodec
+import org.cipherkey.app.clipboard.ClipboardHistoryRecorder
 import org.cipherkey.security.clipboard.ClipboardAccess
 import org.cipherkey.security.policies.Argon2Profile
 
@@ -38,6 +39,7 @@ class ContactsViewModel @Inject constructor(
     private val sessionKeys: SessionKeyRepository,
     private val messageCipher: MessageCipher,
     private val clipboard: ClipboardAccess,
+    private val clipboardRecorder: ClipboardHistoryRecorder,
     private val biometricStore: BiometricKeyStore,
     private val settings: SettingsRepository,
 ) : ViewModel() {
@@ -181,8 +183,28 @@ class ContactsViewModel @Inject constructor(
     /**
      * Copies text (e.g. an invite code) through the ClipboardAccess
      * chokepoint (deep-scan finding 14) and reports whether it worked.
+     * v0.5.2: public copies (invite codes) join the clipboard history.
      */
-    fun copyText(text: String): Boolean = clipboard.setText(text)
+    fun copyText(text: String): Boolean {
+        val copied = clipboard.setText(text)
+        if (copied) {
+            clipboardRecorder.onCopied(text)
+        }
+        return copied
+    }
+
+    /**
+     * v0.5.2: copies a SUGGESTED PASSPHRASE — the sensitive clipboard path
+     * (hidden preview on Android 13+), NEVER recorded in the clipboard
+     * history (secrets must not persist on disk).
+     */
+    fun copySensitiveText(text: String): Boolean {
+        val copied = clipboard.setSensitiveText(text)
+        if (copied) {
+            clipboardRecorder.onSensitiveCopied(text)
+        }
+        return copied
+    }
 
     fun unlockContact(contactId: ContactId, passphrase: CharArray, onResult: (UnlockOutcome) -> Unit) {
         viewModelScope.launch {

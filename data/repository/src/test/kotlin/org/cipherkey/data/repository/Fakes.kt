@@ -13,6 +13,8 @@ import org.cipherkey.core.crypto.RandomSource
 import org.cipherkey.core.keys.FixedKeyProtector
 import org.cipherkey.core.sessions.KeySessionManager
 import org.cipherkey.core.sessions.TimeSource
+import org.cipherkey.data.database.ClipboardHistoryDao
+import org.cipherkey.data.database.ClipboardHistoryEntity
 import org.cipherkey.data.database.ContactDao
 import org.cipherkey.data.database.ContactEntity
 import org.cipherkey.data.database.SessionKeyDao
@@ -89,6 +91,50 @@ class FakeSessionKeyDao : SessionKeyDao {
 /** Settable wall clock for deterministic session-expiry tests. */
 class MutableTimeSource(var now: Long = 1_000_000L) : TimeSource {
     override fun nowMillis(): Long = now
+}
+
+/**
+ * v0.5.2: in-memory ClipboardHistoryDao — mirrors the Room queries the
+ * repository relies on (delete-then-insert move-to-top, age pruning, cap).
+ */
+class FakeClipboardHistoryDao : ClipboardHistoryDao {
+    private var nextId = 1L
+    val state = MutableStateFlow<List<ClipboardHistoryEntity>>(emptyList())
+
+    private fun newestFirst() = state.value.sortedWith(
+        compareByDescending<ClipboardHistoryEntity> { it.capturedAt }.thenByDescending { it.id },
+    )
+
+    override suspend fun upsert(entry: ClipboardHistoryEntity): Long {
+        val id = if (entry.id == 0L) nextId++ else entry.id
+        state.value = state.value.filterNot { it.id == id } + entry.copy(id = id)
+        return id
+    }
+
+    override fun observeAll(): Flow<List<ClipboardHistoryEntity>> =
+        state.map { newestFirst() }
+
+    override suspend fun all(): List<ClipboardHistoryEntity> = newestFirst()
+
+    override suspend fun deleteById(id: Long) {
+        state.value = state.value.filterNot { it.id == id }
+    }
+
+    override suspend fun deleteByText(text: String) {
+        state.value = state.value.filterNot { it.text == text }
+    }
+
+    override suspend fun clearAll() {
+        state.value = emptyList()
+    }
+
+    override suspend fun pruneOlderThan(cutoff: Long) {
+        state.value = state.value.filterNot { it.capturedAt < cutoff }
+    }
+
+    override suspend fun keepNewest(keep: Int) {
+        state.value = newestFirst().take(keep)
+    }
 }
 
 /**

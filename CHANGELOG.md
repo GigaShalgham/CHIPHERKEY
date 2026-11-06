@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2-alpha] - 2026-11-07 — clipboard history, panel close, passphrase suggestion
+
+Three clarifications from the same user who reported the v0.5.1 batch.
+
+### Added
+
+- **Clipboard history** (user request: "the list of things you copied and
+  copied before") — the "Clipboard" button next to Paste (Encrypt and
+  Decrypt tabs) now opens a HISTORY dialog instead of a single-clip
+  preview: tap any entry to insert it, per-entry ✕ delete, "Clear
+  history". Entries carry a relative age, a CK1 tag for envelopes and a
+  "truncated" marker.
+  - Capture points, all focus-gated or user-initiated (the app still
+    registers NO clipboard listener and reads NOTHING in the background —
+    Android 10+ would deny it anyway): the clipboard read when CipherKey
+    gains window focus (copy in the messenger, then open the app), the
+    assistant's Encrypt/Decrypt-clipboard rows, Paste, and the copies the
+    app itself makes (envelopes, invite codes).
+  - PRIVACY: decrypted plaintext and suggested passphrases copy through
+    the SENSITIVE path and are NEVER recorded (the recorder marks them
+    seen so a later focus read cannot pick them up either). Storage is
+    capped — 25 entries, 7 days, 2 000 chars per entry — and lives in the
+    private, non-backed-up database. A Settings toggle (default ON) turns
+    capture off, with a "Clear history" action.
+- **Strong-passphrase suggestion AT the password-entry moment** (user
+  request) — every passphrase field (Encrypt/Decrypt tabs, the companion
+  sheets, the contact detail dialog) can now offer "Suggest a strong
+  passphrase" with Use / New one / Copy / Hide. "Use" fills the field;
+  "Copy" takes the sensitive clipboard path and never enters the history.
+  - GATED BY THE FRIEND INVITE (user's rule): the affordance appears ONLY
+    when this era was created locally — i.e. no friend invite code was
+    entered, so THIS side is choosing the shared passphrase right now —
+    AND the era was never unlocked on this device. When a friend invite
+    was entered, the peer already picked the passphrase the user must
+    type, so no suggestion is offered. A new `session_keys.imported`
+    column (DB v2 migration) records how each era arrived; after the
+    first successful unlock the suggestion disappears for good.
+- **Floating assistant panel ✕** (user report: "you can't just close or
+  minimize it — you must do something or turn it off entirely") — the
+  panel now has a header with a ✕ that COLLAPSES it back to the bubble
+  without running anything; the service keeps running. Previously the
+  only ways out of an open panel were performing an action or "Turn off".
+
+### Changed
+
+- The "View clipboard" button is renamed "Clipboard" and opens the
+  history dialog; the v0.5.1 single-clip preview dialog is gone (the
+  current clip is recorded on open and sits on top of the list).
+
+### Fixed
+
+- Suggested passphrases copied from the Add-contact dialog previously
+  went through the PLAIN clipboard path (visible preview, and they would
+  have been recorded by the new history) — they now use the sensitive
+  path like every other secret CipherKey copies.
+
 ## [0.5.1-alpha] - 2026-11-06 — user-reported fixes batch
 
 All six items below come from one user test pass on v0.5.0-alpha.

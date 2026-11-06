@@ -103,6 +103,7 @@ abstract class BaseCompanionActivity : FragmentActivity() {
                     onBiometricUnlock = viewModel::onBiometricUnlockResult,
                     loadRememberKey = viewModel::consumeRememberKey,
                     onRememberDone = viewModel::onRememberDone,
+                    onCopyPassphrase = viewModel::copyPassphrase,
                 )
             }
         }

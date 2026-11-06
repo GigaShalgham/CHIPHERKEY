@@ -48,13 +48,22 @@
     <string name="action_done">Done</string>
     <string name="action_clear">Clear</string>
     <string name="action_paste">Paste</string>
-    <string name="action_view_clipboard">View clipboard</string>
+    <string name="action_view_clipboard">Clipboard</string>
     <string name="action_share">Share</string>
+    <string name="action_clear_history">Clear history</string>
 
-    <!-- v0.5.1: clipboard preview dialog ("View clipboard" button). -->
-    <string name="clipboard_preview_title">Clipboard</string>
-    <string name="clipboard_preview_chars">%1$d characters on the clipboard</string>
-    <string name="clipboard_preview_chars_truncated">Preview truncated — %1$d characters in total</string>
+    <!-- v0.5.2: clipboard HISTORY dialog ("Clipboard" button next to Paste)
+         — the list of things you copied now and copied before. -->
+    <string name="clipboard_history_title">Clipboard history</string>
+    <string name="clipboard_history_empty">Nothing here yet. Text you copy lands here when you open CipherKey or paste.</string>
+    <string name="clipboard_history_cleared">Clipboard history cleared.</string>
+    <string name="clipboard_history_truncated">truncated</string>
+    <string name="clipboard_history_ck1_tag">CK1</string>
+    <string name="clipboard_history_just_now">just now</string>
+    <string name="clipboard_history_minutes_ago">%1$d min ago</string>
+    <string name="clipboard_history_hours_ago">%1$d h ago</string>
+    <string name="clipboard_history_days_ago">%1$d d ago</string>
+    <string name="clipboard_history_delete_entry">Delete this entry</string>
 
     <!-- Biometric prompt (system dialog copy) -->
     <string name="biometric_prompt_title_unlock">Unlock CipherKey</string>
@@ -81,6 +90,9 @@
     <string name="assistant_open_app">Open CipherKey</string>
     <string name="assistant_turn_off">Turn off assistant</string>
     <string name="assistant_hint">In messengers: copy the message, then tap "Decrypt clipboard".</string>
+    <!-- v0.5.2: header caption + the ✕ that collapses the panel with no action. -->
+    <string name="assistant_panel_title">CipherKey</string>
+    <string name="assistant_close_panel">Close panel</string>
     <string name="assistant_locked_all">All sessions locked (%1$d wiped)</string>
     <string name="assistant_locked_all_none">No unlocked sessions to lock</string>
     <string name="assistant_notification_title">CipherKey assistant active</string>
@@ -235,11 +247,25 @@
     <string name="passphrase_strength_strong">strong</string>
     <string name="passphrase_strength_summary">Strength: %1$s · ≈ %2$d bits</string>
 
+    <!-- v0.5.2: strong-passphrase suggestion AT the password-entry point.
+         Offered only when this side is choosing the passphrase (a locally
+         created era, never unlocked) — an imported era means the peer
+         already picked it. -->
+    <string name="passphrase_suggest_action">Suggest a strong passphrase</string>
+    <string name="passphrase_suggestion_use">Use</string>
+    <string name="passphrase_suggestion_new">New one</string>
+    <string name="passphrase_suggestion_copied">Copied — marked sensitive, never stored in the clipboard history.</string>
+    <string name="passphrase_suggestion_first_warning">You are choosing the shared passphrase right now — your contact must type exactly the same one.</string>
+
     <!-- v0.5.0: contacts FAB / empty-state CTA (was "+ Add contact" text button). -->
     <string name="contacts_add_contact">Add contact</string>
 
     <!-- v0.5.0: Settings "Features" section (biometric unlock + assistant). -->
     <string name="settings_features_section">Features</string>
+
+    <!-- v0.5.2: Settings clipboard-history rows. -->
+    <string name="settings_clipboard_history_title">Clipboard history</string>
+    <string name="settings_clipboard_history_summary">Keep the last 25 things you copied (for 7 days) so you can reuse them from the Encrypt and Decrypt tabs. Decrypted text and passphrases are never stored.</string>
 
     <!-- v0.5.0: launcher app shortcuts (docs/COMPATIBILITY.md) — the
          selection-toolbar fallback that works in every messenger. -->

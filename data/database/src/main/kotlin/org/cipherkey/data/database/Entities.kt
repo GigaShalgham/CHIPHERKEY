@@ -23,6 +23,40 @@ data class ContactEntity(
 )
 
 /**
+ * v0.5.2: one captured clipboard clip — the user-facing clipboard
+ * history ("the list of things you copied and had copied before").
+ *
+ * SECURITY CONTRACT:
+ *  - entries are created ONLY from a focus-gated or user-initiated read
+ *   (never a background listener — the app cannot and does not monitor the
+ *   clipboard while another app owns it);
+ *  - clips CipherKey itself copies as SENSITIVE (decrypted plaintext,
+ *   suggested passphrases) are NEVER recorded, and the recorder treats
+ *   them as already-seen so a later focus read cannot pick them up either;
+ *  - [text] is capped at [org.cipherkey.data.repository.ClipboardHistoryRepository.MAX_STORED_CHARS]
+ *   characters ([truncated] says the original clip was longer) so a
+ *   multi-megabyte copy cannot bloat the database;
+ *  - the whole history is pruned to the newest [MAX_ENTRIES_BY_POLICY]
+ *   entries and expires after a week (repository policy), and sits in the
+ *   app's private, non-backup-up storage (allowBackup=false).
+ */
+@Entity(tableName = "clipboard_history")
+data class ClipboardHistoryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
+    val text: String,
+    /** True when the clip looks like a CK1 envelope (monospace rendering). */
+    val isEnvelope: Boolean,
+    /** True when [text] was cut short by the storage cap. */
+    val truncated: Boolean,
+    val capturedAt: Long,
+) {
+    companion object {
+        /** Storage-side safety net; the repository enforces the real cap. */
+        const val MAX_ENTRIES_BY_POLICY = 25
+    }
+}
+
+/**
  * One key era belonging to a contact.
  *
  * A "key era" is the tuple (keyId, salt, Argon2id params). The passphrase is
@@ -31,6 +65,14 @@ data class ContactEntity(
  * never leaves the device, and serves as the on-device passphrase verifier.
  * Older eras of a contact may coexist (rotation creates a new era); only the
  * newest era is used for sending.
+ *
+ * v0.5.2: `imported` records HOW the era arrived — created locally (the
+ * user left the invite field empty, so THIS side picks the shared
+ * passphrase) or imported from the peer's CKS1 invite (the PEER already
+ * picked the passphrase). It gates the "suggest a strong passphrase"
+ * affordance at the passphrase-entry point (user report: offering a fresh
+ * random passphrase to someone who must type their contact's existing one
+ * is misleading).
  */
 @Entity(
     tableName = "session_keys",
@@ -59,6 +101,8 @@ data class SessionKeyEntity(
     val parallelism: Int,
     /** Keystore-wrapped derived key (device-bound verifier), or null until first unlock. */
     val wrappedKey: ByteArray?,
+    /** v0.5.2: true when the era arrived via the peer's invite (friend chose the passphrase). */
+    val imported: Boolean,
     val createdAt: Long,
     val lastUsedAt: Long?,
 ) {
@@ -72,6 +116,7 @@ data class SessionKeyEntity(
             iterations == other.iterations &&
             parallelism == other.parallelism &&
             (wrappedKey?.contentEquals(other.wrappedKey) ?: (other.wrappedKey == null)) &&
+            imported == other.imported &&
             createdAt == other.createdAt &&
             lastUsedAt == other.lastUsedAt
 
@@ -84,6 +129,7 @@ data class SessionKeyEntity(
         result = 31 * result + iterations
         result = 31 * result + parallelism
         result = 31 * result + (wrappedKey?.contentHashCode() ?: 0)
+        result = 31 * result + imported.hashCode()
         result = 31 * result + createdAt.hashCode()
         result = 31 * result + (lastUsedAt?.hashCode() ?: 0)
         return result

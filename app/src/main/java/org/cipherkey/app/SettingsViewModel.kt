@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.cipherkey.data.preferences.AppSettings
 import org.cipherkey.data.preferences.SettingsRepository
+import org.cipherkey.data.repository.ClipboardHistoryRepository
 import org.cipherkey.data.repository.MessageCipher
 import org.cipherkey.app.assistant.AssistantReadiness
 import org.cipherkey.app.assistant.FloatingAssistantService
@@ -38,6 +39,7 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val biometrics: org.cipherkey.app.security.BiometricKeyStore,
     private val messageCipher: MessageCipher,
+    private val clipboardHistory: ClipboardHistoryRepository,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -147,6 +149,20 @@ class SettingsViewModel @Inject constructor(
     fun lockAllNow() {
         viewModelScope.launch {
             messageCipher.lockAll()
+        }
+    }
+
+    /** v0.5.2: clipboard-history capture toggle. */
+    fun setClipboardHistoryEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setClipboardHistoryEnabled(enabled)
+        }
+    }
+
+    /** v0.5.2: wipes the clipboard history from Settings. */
+    fun clearClipboardHistory() {
+        viewModelScope.launch {
+            clipboardHistory.clear()
         }
     }
 

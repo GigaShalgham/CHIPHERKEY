@@ -50,13 +50,21 @@
     <string name="action_done">تمام</string>
     <string name="action_clear">پاک کردن</string>
     <string name="action_paste">چسباندن</string>
-    <string name="action_view_clipboard">نمایش کلیپ‌بورد</string>
+    <string name="action_view_clipboard">کلیپ‌بورد</string>
     <string name="action_share">اشتراک‌گذاری</string>
+    <string name="action_clear_history">پاک‌کردن تاریخچه</string>
 
-    <!-- v0.5.1: clipboard preview dialog -->
-    <string name="clipboard_preview_title">کلیپ‌بورد</string>
-    <string name="clipboard_preview_chars">%1$d نویسه در کلیپ‌بورد</string>
-    <string name="clipboard_preview_chars_truncated">پیش‌نمایش کوتاه شده — در مجموع %1$d نویسه</string>
+    <!-- v0.5.2: تاریخچهٔ کلیپ‌بورد — فهرست چیزهایی که حالا و قبلاً کپی کرده‌اید. -->
+    <string name="clipboard_history_title">تاریخچهٔ کلیپ‌بورد</string>
+    <string name="clipboard_history_empty">هنوز چیزی اینجا نیست. متن‌هایی که کپی می‌کنید با باز کردن CipherKey یا چسباندن، اینجا ثبت می‌شوند.</string>
+    <string name="clipboard_history_cleared">تاریخچهٔ کلیپ‌بورد پاک شد.</string>
+    <string name="clipboard_history_truncated">کوتاه‌شده</string>
+    <string name="clipboard_history_ck1_tag">CK1</string>
+    <string name="clipboard_history_just_now">همین حالا</string>
+    <string name="clipboard_history_minutes_ago">%1$d دقیقه پیش</string>
+    <string name="clipboard_history_hours_ago">%1$d ساعت پیش</string>
+    <string name="clipboard_history_days_ago">%1$d روز پیش</string>
+    <string name="clipboard_history_delete_entry">حذف این مورد</string>
 
     <!-- Biometric prompt (system dialog copy) -->
     <string name="biometric_prompt_title_unlock">باز کردن قفل CipherKey</string>
@@ -81,6 +89,9 @@
     <string name="assistant_open_app">باز کردن CipherKey</string>
     <string name="assistant_turn_off">خاموش کردن دستیار</string>
     <string name="assistant_hint">در پیام‌رسان‌ها: پیام را کپی کنید، بعد «رمزگشایی کلیپ‌بورد» را بزنید.</string>
+    <!-- v0.5.2: عنوان پنل و دکمهٔ ✕ که فقط پنل را می‌بندد، بدون هیچ کاری. -->
+    <string name="assistant_panel_title">CipherKey</string>
+    <string name="assistant_close_panel">بستن پنل</string>
     <string name="assistant_locked_all">همهٔ نشست‌ها قفل شد (%1$d کلید پاک شد)</string>
     <string name="assistant_locked_all_none">نشست بازی برای قفل‌کردن وجود ندارد</string>
     <string name="assistant_notification_title">دستیار CipherKey فعال است</string>
@@ -227,11 +238,23 @@
     <string name="passphrase_strength_strong">قوی</string>
     <string name="passphrase_strength_summary">قدرت: %1$s · ≈ %2$d بیت</string>
 
+    <!-- v0.5.2: پیشنهاد پسورد قوی در لحظهٔ وارد کردن پسورد — فقط وقتی این
+         طرف در حال انتخاب پسورد اشتراکی است (era محلی و هرگز باز نشده). -->
+    <string name="passphrase_suggest_action">پیشنهاد پسورد قوی</string>
+    <string name="passphrase_suggestion_use">استفاده</string>
+    <string name="passphrase_suggestion_new">یکی دیگر</string>
+    <string name="passphrase_suggestion_copied">کپی شد — به‌عنوان محتوای حساس علامت خورد و هرگز در تاریخچهٔ کلیپ‌بورد ذخیره نمی‌شود.</string>
+    <string name="passphrase_suggestion_first_warning">شما همین حالا پسورد اشتراکی را انتخاب می‌کنید — مخاطب شما باید دقیقاً همین را وارد کند.</string>
+
     <!-- Contacts FAB / empty-state CTA -->
     <string name="contacts_add_contact">افزودن مخاطب</string>
 
     <!-- Settings "Features" section -->
     <string name="settings_features_section">ویژگی‌ها</string>
+
+    <!-- v0.5.2: ردیف‌های تاریخچهٔ کلیپ‌بورد در تنظیمات. -->
+    <string name="settings_clipboard_history_title">تاریخچهٔ کلیپ‌بورد</string>
+    <string name="settings_clipboard_history_summary">۲۵ مورد آخر چیزهایی که کپی کرده‌اید (تا ۷ روز) نگه داشته می‌شود تا از تب‌های رمزنگاری و رمزگشایی دوباره استفاده کنید. متن رمزگشایی‌شده و پسوردها هرگز ذخیره نمی‌شوند.</string>
 
     <!-- Launcher app shortcuts -->
     <string name="shortcut_encrypt_short">رمزنگاری</string>

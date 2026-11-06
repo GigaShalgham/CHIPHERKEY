@@ -104,8 +104,9 @@ fun DecryptScreen(
                 }) {
                     Text(stringResource(R.string.action_paste))
                 }
-                // v0.5.1: see WHAT the clipboard holds before pasting.
-                OutlinedButton(onClick = viewModel::previewClipboard) {
+                // v0.5.2: the clipboard history ("things you copied and
+                // had copied before") — tap an entry to insert it.
+                OutlinedButton(onClick = viewModel::openClipboardHistory) {
                     Text(stringResource(R.string.action_view_clipboard))
                 }
             }
@@ -137,6 +138,10 @@ fun DecryptScreen(
                     buttonLabel = stringResource(R.string.unlock_decrypt_action),
                     busy = state.busy,
                     onSubmit = viewModel::unlockAndContinue,
+                    // v0.5.2: suggestion only when THIS side is choosing the
+                    // passphrase (locally created era, never unlocked here).
+                    allowSuggestion = state.suggestPassphrase,
+                    onCopySensitive = viewModel::copyPassphrase,
                 )
                 if (state.biometricOffered) {
                     OutlinedButton(
@@ -156,15 +161,17 @@ fun DecryptScreen(
 
         NoticeBanner(state.notice)
 
-        // v0.5.1: clipboard preview dialog ("View clipboard").
-        state.clipboardPreview?.let { preview ->
-            ClipboardPreviewDialog(
-                preview = preview,
-                onPaste = {
-                    viewModel.dismissClipboardPreview()
-                    viewModel.pasteIntoInput { input = it }
+        // v0.5.2: clipboard history dialog ("Clipboard" next to Paste).
+        if (state.clipboardHistoryOpen) {
+            ClipboardHistoryDialog(
+                entries = state.clipboardHistory,
+                onUse = { entry ->
+                    viewModel.dismissClipboardHistory()
+                    input = entry.text
                 },
-                onDismiss = viewModel::dismissClipboardPreview,
+                onDelete = viewModel::deleteClipboardEntry,
+                onClearAll = viewModel::clearClipboardHistory,
+                onDismiss = viewModel::dismissClipboardHistory,
             )
         }
 

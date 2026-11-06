@@ -19,6 +19,7 @@ import org.cipherkey.core.crypto.RandomSource
 import org.cipherkey.core.sessions.KeySessionManager
 import org.cipherkey.core.sessions.TimeSource
 import org.cipherkey.data.database.CipherKeyDatabase
+import org.cipherkey.data.database.ClipboardHistoryDao
 import org.cipherkey.data.database.ContactDao
 import org.cipherkey.data.database.SessionKeyDao
 import org.cipherkey.data.preferences.SettingsRepository
@@ -32,6 +33,10 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): CipherKeyDatabase =
         Room.databaseBuilder(context, CipherKeyDatabase::class.java, CipherKeyDatabase.NAME)
+            // v0.5.2: in-place schema upgrades (v2 adds session_keys.imported
+            // and the clipboard_history table) — without the explicit
+            // migration Room would wipe the vault on update.
+            .addMigrations(CipherKeyDatabase.MIGRATION_1_2)
             .build()
 
     @Provides
@@ -39,6 +44,10 @@ object DatabaseModule {
 
     @Provides
     fun provideSessionKeyDao(database: CipherKeyDatabase): SessionKeyDao = database.sessionKeyDao()
+
+    @Provides
+    fun provideClipboardHistoryDao(database: CipherKeyDatabase): ClipboardHistoryDao =
+        database.clipboardHistoryDao()
 }
 
 @Module
@@ -98,6 +107,16 @@ object RepositoryModule {
         timeSource: TimeSource,
         dispatchers: DispatcherProvider,
     ): SessionKeyRepository = SessionKeyRepository(sessionKeyDao, random, timeSource, dispatchers)
+
+    /** v0.5.2: the clipboard history (capture policy + pruning live there). */
+    @Provides
+    @Singleton
+    fun provideClipboardHistoryRepository(
+        clipboardHistoryDao: ClipboardHistoryDao,
+        timeSource: TimeSource,
+        dispatchers: DispatcherProvider,
+    ): ClipboardHistoryRepository =
+        ClipboardHistoryRepository(clipboardHistoryDao, timeSource, dispatchers)
 
     @Provides
     @Singleton
