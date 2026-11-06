@@ -4,21 +4,12 @@
 
 <!-- What does this PR change, in one or two sentences? -->
 
-## Spec Kit reference
+## Security checklist
 
-<!-- Meaningful changes require a specification. Link it, or state why this
-     is trivial maintenance that does not need one (Constitution VI). -->
-
-- Spec: `specs/NNN-slug/spec.md` <!-- or "trivial maintenance: ..." -->
-
-## Constitution compliance
-
-<!-- See .specify/memory/constitution.md -->
-
-- [ ] This change does not weaken any security property (Principle I)
-- [ ] All claims in docs/tests are backed by machine-verifiable evidence (Principle II)
-- [ ] No cryptographic implementation was added to `:keyboard` (Principle III)
-- [ ] No new permissions, network code, or background clipboard access (Principle IV)
+- [ ] This change does not weaken any security property documented in `docs/THREAT_MODEL.md`
+- [ ] No cryptographic implementation was added to `:keyboard`
+- [ ] No new permissions, network code, or background clipboard access
+- [ ] Wire-format changes keep the golden-vector test passing (or bump CK1 with migration notes in `docs/PROTOCOL.md`)
 
 ## Testing
 

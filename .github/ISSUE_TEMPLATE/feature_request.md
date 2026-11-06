@@ -20,8 +20,8 @@ What should happen, and where (app UI / keyboard / protocol / settings).
 **Does it touch security-relevant behavior?**
 
 If yes (crypto, protocol format, key handling, clipboard, permissions),
-the change requires a Spec Kit specification and tests per the project
-Constitution before implementation. See `specs/` and CONTRIBUTING.md.
+please outline the security implications; such changes require tests and
+documentation per CONTRIBUTING.md before implementation.
 
 **Describe alternatives you've considered**
 

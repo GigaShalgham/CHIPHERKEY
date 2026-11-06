@@ -1,20 +1,21 @@
 # CipherKey
 
 [![CI](https://github.com/GigaShalgham/CHIPHERKEY/actions/workflows/android-ci.yml/badge.svg)](https://github.com/GigaShalgham/CHIPHERKEY/actions/workflows/android-ci.yml)
+[![Release](https://img.shields.io/badge/release-v0.4.2-blue.svg)](https://github.com/GigaShalgham/CHIPHERKEY/releases/latest)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Min SDK: 26](https://img.shields.io/badge/min_SDK-26_(Android_8.0)-green.svg)](app/build.gradle.kts)
 
 **A local-first, permission-free encryption companion for any Android
 messenger.**
 
-CipherKey adds end-to-end message encryption to the messaging apps you already
-use — SMS, Telegram, WhatsApp, anything that supports standard text selection
-or sharing — without any server, account, or network access. Since v0.2 the
-shipped app is a **companion**, not a keyboard: you keep the keyboard you
-already use, select the text you want to protect, and tap **Encrypt
-(CipherKey)** in the selection toolbar. The draft is replaced with a
-`CK1:...` ciphertext you send as an ordinary message. On the receiving side,
-select the message (or share it to CipherKey), tap **Decrypt (CipherKey)**,
-read the plaintext preview, copy or insert it.
+CipherKey adds end-to-end message encryption to the messaging apps you
+already use — SMS, Telegram, WhatsApp, anything that supports standard text
+selection or sharing — without any server, account, or network access. You
+keep the keyboard you already use: select the text you want to protect, tap
+**Encrypt (CipherKey)**, and the draft is replaced with a `CK1:...`
+ciphertext you send as an ordinary message. On the receiving side, select
+or share the message, tap **Decrypt (CipherKey)**, enter the shared
+passphrase, and read the plaintext preview.
 
 ```
 Send:    type with any keyboard → select the draft → “Encrypt (CipherKey)” → ciphertext replaces it → send
@@ -24,49 +25,47 @@ Receive: select/share the CK1:... message → “Decrypt (CipherKey)” → pass
 When an app's selection toolbar is unavailable, the Home screen offers an
 **Encrypt clipboard / Decrypt clipboard** fallback ladder.
 
-## Status
+## Highlights
 
-| Capability | Status |
-|---|---|
-| Build (debug APK) | ✅ builds from source (`./gradlew assembleDebug`) |
-| Companion workflows (selection toolbar, sharesheet, clipboard fallback) | ✅ implemented, unit-tested (logic) |
-| Mode A crypto: Argon2id + AES-256-GCM | ✅ implemented, 197 unique unit tests, RFC 9106 vector verified |
-| CK1 wire protocol + CKS1 invites | ✅ implemented, golden vector pinned |
-| Contact / key-era management (Room) | ✅ implemented |
-| Android Keystore key wrapping (verifier is a digest, never the raw key) | ✅ implemented (needs on-device verification) |
-| Session manager (timeout, isolation, wipe, periodic sweep) | ✅ implemented, unit-tested |
-| Old-key-era message decryption | ✅ v0.4.0 — superseded eras unlock with `unlockEra` into a bounded historical-session cache (decrypt-only, never the sending key); the envelope's era is resolved from its keyId |
-| Passphrase advisor | ✅ v0.4.0 live strength meter; v0.4.1 — the suggestion is OPTIONAL (explicit button, never auto-shown) with the same-passphrase-on-both-sides rule line (7 words + 2 digits, 69 bits guaranteed) |
-| Fingerprint unlock (opt-in) | ✅ v0.4.1 — gate, prompt and Keystore wrap key all STRONG-class; honest per-failure reasons in Settings; offered in the tools tabs, companion flows and the contact dialog |
-| On-device smoke test (real phone) | ⚠️ maintainer device gate in progress (see `specs/004…/DEVICE_TEST.md`) |
-| Mode B: public-key (Signal et al.) | ❌ interface only — evaluated and deferred, see docs/PLUGINS.md |
-| Built-in keyboard (IME) | ❌ removed from the APK in v0.2 — the `:keyboard` module stays in-repo, compiled and tested as a dormant library |
-| v0.3.0-alpha (floating assistant, fingerprint unlock, in-app tools) | ✅ re-implemented on `main` (spec 005, recovered from the signed release APK; see CHANGELOG) |
+- **Works with any messenger** — no server, no account, no `INTERNET`
+  permission; the app contains no network code at all.
+- **Modern authenticated crypto** — AES-256-GCM (96-bit nonce, 128-bit
+  tag) with Argon2id (RFC 9106) key derivation, pinned in tests to the
+  RFC's official vector.
+- **Nothing sensitive at rest** — the passphrase is never stored; unlocked
+  keys live in memory only and are wiped on lock, timeout or replacement;
+  at rest only a Keystore-wrapped, device-bound **digest** verifier exists
+  (never the raw key).
+- **Zero permissions by default** — the floating assistant and fingerprint
+  unlock are strictly opt-in and off by default; with both disabled the app
+  is fully zero-permission.
+- **Screen-capture protection** — screens that show decrypted plaintext
+  set `FLAG_SECURE`; copied plaintext is flagged sensitive on Android 13+.
+- **Old messages keep decrypting** — superseded key eras unlock on demand
+  into a bounded, decrypt-only historical session cache; the envelope's
+  era is resolved from its key ID.
+- **Fingerprint unlock (opt-in)** — STRONG-class biometrics for the gate,
+  the prompt and the Keystore wrap key, with honest per-failure reasons in
+  Settings.
 
-See `ENGINEERING_REPORT.md` (v0.1 history), `docs/DEEP-SCAN-2026-11-05.md`
-and `docs/DEEP-SCAN-2026-11-06.md` (the v0.4.0 audit), and `CHANGELOG.md`
-for engineering status and known limitations.
+## Requirements
 
-## Building
+Android 8.0 (API 26) or newer.
 
-Requirements: JDK 17+ (built and tested with JDK 21), Android SDK with
-platform 36 and build-tools 36.0.0 (or let Gradle's SDK tooling handle it).
+## Install
+
+Grab the APK from the
+[latest release](https://github.com/GigaShalgham/CHIPHERKEY/releases/latest).
+Each release page states the build type and the APK's SHA-256 checksum —
+verify before installing:
 
 ```bash
-./gradlew assembleDebug          # debug APK  -> app/build/outputs/apk/debug/
-./gradlew test                   # full unit-test suite (90 tests / 0 failures, v0.3.0)
+sha256sum CipherKey-v0.4.2-debug.apk
 ```
 
-The application contains **no network code**. Its manifest is zero-permission
-by default: the two v0.3.0 features that need Android permissions — the
-floating assistant (`SYSTEM_ALERT_WINDOW`, foreground-service and
-notification permissions) and fingerprint unlock (`USE_BIOMETRIC`) — are
-**opt-in and off by default**, and with both disabled the app behaves
-exactly like v0.2. The only always-present entry `aapt2 dump permissions`
-shows is the `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` marker that AndroidX
-generates (a permission the app owns itself; it grants no capabilities).
-Verify it yourself: `aapt2 dump permissions
-app/build/outputs/apk/debug/app-debug.apk`.
+> The APK attached to current releases is the CI **debug build** of the
+> tagged commit (debug-signed). Release-signed builds follow the project's
+> signing convention on maintainer machines (`./gradlew assembleRelease`).
 
 ## How it works
 
@@ -78,31 +77,61 @@ app/build/outputs/apk/debug/app-debug.apk`.
 2. **Unlock per session.** The passphrase is never stored. Deriving the
    AES-256 key takes ~hundreds of milliseconds (Argon2id, 64 MiB / 3 passes
    by default). Keys live in memory only and are wiped on lock, timeout or
-   replacement (plus a periodic sweep of expired sessions). After the first
-   successful unlock on a device, a Keystore-wrapped **digest** verifier lets
-   future wrong passphrases be rejected at unlock time — the raw key is never
+   replacement, plus a periodic sweep of expired sessions. After the first
+   successful unlock on a device, a Keystore-wrapped digest verifier lets
+   wrong passphrases be rejected at unlock time — the raw key is never
    persisted, even wrapped.
 3. **Encrypt/decrypt in any app.** The selection toolbar and the sharesheet
-   carry text in and out; the clipboard fallback covers the rest. Screens
-   that display decrypted plaintext set `FLAG_SECURE` (no screenshots or
-   screen recording), and copied plaintext is marked sensitive on
-   Android 13+.
+   carry text in and out; the clipboard fallback covers the rest.
 
 ## Security properties
 
 - AES-256-GCM (JCA) with a 96-bit random nonce and 128-bit tag; the entire
   CK1 header is bound as associated data.
-- Argon2id (RFC 9106) via BouncyCastle's lightweight API; no JCA provider is
-  inserted.
+- Argon2id (RFC 9106) via BouncyCastle's lightweight API; no JCA provider
+  is inserted.
 - Derived keys are never persisted raw; at rest only a Keystore-wrapped,
-  device-bound **digest** of the key exists (full-key verifiers from ≤ 0.2.1
-  are migrated transparently on next unlock).
-- Strict, canonical wire format; unknown versions/algorithms/modes are
+  device-bound **digest** of the key exists (full-key verifiers from
+  ≤ 0.2.1 are migrated transparently on next unlock).
+- Strict, canonical wire format; unknown versions, algorithms or modes are
   rejected before any cryptographic work.
-- `allowBackup=false`; no `INTERNET` permission; zero-permission default
-  (v0.3.0 opt-in features add their own, documented in the CHANGELOG).
+- `allowBackup=false`; no `INTERNET` permission; zero-permission by
+  default.
 
-Limitations and the honest threat model are in `docs/THREAT_MODEL.md`.
+The honest threat model — including what CipherKey does *not* protect
+against — is in [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
+
+## Status and limitations
+
+- Mode A (shared-passphrase symmetric encryption) is fully implemented and
+  unit-tested; on-device validation is ongoing — issue reports are welcome.
+- Mode B (public-key protocols, e.g. Signal-style) is interface-only by
+  design; see [`docs/PLUGINS.md`](docs/PLUGINS.md).
+- The built-in keyboard (IME) is not part of the APK since v0.2; the
+  `keyboard/` module remains in-repo as a dormant library with no
+  cryptographic code.
+- No forward secrecy in Mode A (static shared passphrase per key era);
+  message metadata (sizes, timing, participants) remains visible to the
+  transport.
+
+## Building
+
+Requirements: JDK 17+ (built and tested with JDK 21), Android SDK with
+platform 36 and build-tools 36.0.0 (or let Gradle's SDK tooling handle
+it).
+
+```bash
+./gradlew assembleDebug          # debug APK -> app/build/outputs/apk/debug/
+./gradlew test                   # full unit-test suite (all modules)
+```
+
+The manifest is zero-permission by default; the opt-in features add their
+own documented permissions (`SYSTEM_ALERT_WINDOW` and friends for the
+floating assistant, `USE_BIOMETRIC` for fingerprint unlock). Verify it
+yourself: `aapt2 dump permissions
+app/build/outputs/apk/debug/app-debug.apk` — the only always-present entry
+is the AndroidX-generated `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`
+marker (a permission the app owns itself; it grants no capabilities).
 
 ## Repository layout
 
@@ -112,40 +141,38 @@ keyboard/       the IME — dormant library since v0.2 (NOT in the APK; no crypt
 core/           pure-Kotlin domain: crypto, messages, keys, sessions
 data/           Room database, repositories (MessageCipher facade), settings
 security/       Keystore protector, clipboard chokepoint, parameter policies
-plugins/        public-key protocol plugin API + registry (empty in v0.2)
-docs/           PROTOCOL, ARCHITECTURE, THREAT_MODEL, PLUGINS, DEEP-SCAN audits
-specs/          GitHub Spec Kit feature specifications
+plugins/        public-key protocol plugin API + registry (interface only)
+docs/           PROTOCOL, ARCHITECTURE, THREAT_MODEL, PLUGINS, dated security self-audits
 ```
 
-The `:keyboard` module contains **no cryptographic implementation**; when it
-ships it would consume the `MessageCipher` facade from `:data:repository`.
 Module dependency directions are acyclic and documented in
-`docs/ARCHITECTURE.md`.
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); the CK1 wire format and
+CKS1 invites are specified in [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
 
-## Releases
+## Documentation
 
-Prebuilt APKs live under
-[GitHub Releases](https://github.com/GigaShalgham/CHIPHERKEY/releases).
-Every release page states the build type, the signing certificate SHA-256
-fingerprint, and the APK's SHA-256 checksum — verify before installing:
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — module structure and
+  dependency rules
+- [`docs/PROTOCOL.md`](docs/PROTOCOL.md) — CK1 wire format and CKS1 invite
+  encoding
+- [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — what is protected, what
+  is not
+- [`docs/PLUGINS.md`](docs/PLUGINS.md) — public-key plugin API (Mode B)
+- [`docs/DEEP-SCAN-*.md`](docs/) — dated security self-audit reports
+- [`CHANGELOG.md`](CHANGELOG.md) — version history
 
-```bash
-sha256sum CipherKey-v0.2.1-alpha-release.apk
-apksigner verify --print-certs CipherKey-v0.2.1-alpha-release.apk
-```
+## Community
 
-CI artifacts (`cipherkey-debug-apk`) are unsigned debug builds for
-experimentation; only GitHub Releases carry signed builds.
-
-## Community & workflow
-
-- [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security policy](SECURITY.md) · [Changelog](CHANGELOG.md)
-- Engineering follows [GitHub Spec Kit](https://github.com/github/spec-kit):
-  the project Constitution and feature specifications live under
-  [`specs/`](specs/) (Constitution: [`.specify/memory/constitution.md`](.specify/memory/constitution.md)).
+- [Contributing](CONTRIBUTING.md) ·
+  [Code of Conduct](CODE_OF_CONDUCT.md) ·
+  [Security policy](SECURITY.md) ·
+  [Changelog](CHANGELOG.md)
+- Bugs and feature requests:
+  [Issues](https://github.com/GigaShalgham/CHIPHERKEY/issues).
+  Security issues: see [SECURITY.md](SECURITY.md) — never public issues.
 
 ## License
 
-Apache-2.0 — see `LICENSE`. BouncyCastle (MIT-like) and AndroidX/Compose
-(Apache-2.0) are used as dependencies; the RFC 9106 test vector cross-check
-used the RustCrypto known-answer suite.
+Apache-2.0 — see [LICENSE](LICENSE). BouncyCastle (MIT-like) and
+AndroidX/Compose (Apache-2.0) are used as dependencies; the RFC 9106 test
+vector cross-check used the RustCrypto known-answer suite.
