@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-06 — first stable release
+
+Promoted from the 0.4.2-alpha candidate: identical features and fixes, no
+code change beyond the version identity. This is the first release
+published as a full (non-pre-) release, marking the repository's public
+launch.
+
+### Changed
+
+- Version identity: `0.4.2-alpha` / versionCode 8 → `0.4.2` / versionCode 9.
+
+### Repository
+
+- Prepared for public release: README rewritten as a product document,
+  issue/PR templates generalized, internal engineering artifacts (working
+  specs, Spec Kit tooling, session reports, reassessment draft) removed
+  from the tree. Git history is preserved.
+
 ## [0.4.2-alpha] - 2026-11-06 — deep-scan fixes: reactive re-lock, era-change resync, honest errors
 
 Second on-device follow-up: a deep scan of the v0.4.1 UI found two HIGH
