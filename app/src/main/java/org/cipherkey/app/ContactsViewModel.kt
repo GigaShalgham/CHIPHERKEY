@@ -52,7 +52,8 @@ class ContactsViewModel @Inject constructor(
     private val _eras = MutableStateFlow<Map<ContactId, List<ContactSession>>>(emptyMap())
     val eras = _eras.asStateFlow()
 
-    private val _feedback = MutableStateFlow<String?>(null)
+    /** v0.4.2: typed feedback line (resource + arg) — was hardcoded English. */
+    private val _feedback = MutableStateFlow<UiNotice?>(null)
     val feedback = _feedback.asStateFlow()
 
     private val _fingerprints = MutableStateFlow<Map<ContactId, String>>(emptyMap())
@@ -75,6 +76,36 @@ class ContactsViewModel @Inject constructor(
     private var dialogContactId: ContactId? = null
     private var lastUnlockedContactId: ContactId? = null
 
+    /**
+     * v0.4.2 (deep-scan N2 guard): the "contactId:eraId" key the outstanding
+     * fingerprint prompt unwraps — re-checked when the sensor confirms so a
+     * wrap of a ROTATED era can never be activated as the new era's key.
+     */
+    private var pendingPromptKey: String? = null
+
+    init {
+        // v0.4.2 (deep-scan N1): lockAll() from Settings or a session timeout
+        // used to leave this screen's `unlocked` snapshot stale until the
+        // contacts list itself changed. Re-read on every session/era change.
+        viewModelScope.launch {
+            messageCipher.sessionChanges.collect { resync() }
+        }
+    }
+
+    /**
+     * v0.4.2: live re-read of the unlock state, plus the fingerprint offer
+     * and key fingerprint of the contact whose detail dialog is on screen.
+     */
+    private fun resync() {
+        viewModelScope.launch {
+            refreshUnlocked()
+            dialogContactId?.let { id ->
+                refreshBiometricOffer(id)
+                refreshFingerprint(id)
+            }
+        }
+    }
+
     fun refreshAll() {
         viewModelScope.launch {
             refreshUnlocked()
@@ -88,7 +119,7 @@ class ContactsViewModel @Inject constructor(
             _eras.update { it + (contactId to list) }
             refreshUnlocked()
             if (notify && list.isEmpty()) {
-                _feedback.value = "No key era for this contact yet"
+                _feedback.value = UiNotice(R.string.contact_no_era, null)
             }
         }
     }
@@ -97,46 +128,52 @@ class ContactsViewModel @Inject constructor(
      * Creates a contact and either imports the peer's invite (CKS1 code) or
      * generates a fresh key era whose invite the user then shares.
      *
-     * The outcome is delivered to [onResult] as (ok, message) so the ADD
-     * DIALOG can show failures itself (deep-scan finding 6: they used to be
-     * written only to the home-screen feedback column behind the dialog's
-     * scrim, invisible at the moment they happened).
+     * The outcome is delivered to [onResult] as (ok, notice) so the ADD
+     * DIALOG can show the DETAILED failure itself (deep-scan N3: the dialog
+     * used to discard the reason and print a generic "creation failed"),
+     * rendered through string resources instead of hardcoded English.
      */
     fun createContact(
         displayName: String,
         inviteText: String?,
         profile: Argon2Profile,
-        onResult: (ok: Boolean, message: String?) -> Unit,
+        onResult: (ok: Boolean, notice: UiNotice?) -> Unit,
     ) {
         viewModelScope.launch {
             try {
                 val contact = contactsRepository.createContact(displayName)
-                if (!inviteText.isNullOrBlank()) {
+                val era = if (!inviteText.isNullOrBlank()) {
                     val invite = InviteCodec.decode(inviteText.trim())
-                    when (sessionKeys.importEra(contact.id, invite)) {
-                        is EraImport.Imported, is EraImport.AlreadyPresent -> Unit
+                    when (val imported = sessionKeys.importEra(contact.id, invite)) {
+                        is EraImport.Imported -> imported.era
+                        is EraImport.AlreadyPresent -> imported.era
                         EraImport.KeyBelongsToOtherContact -> {
                             contactsRepository.deleteContact(contact.id)
-                            val message = "This invite key already belongs to another contact"
-                            _feedback.value = message
-                            onResult(false, message)
+                            val notice = UiNotice(R.string.contact_invite_key_conflict, null)
+                            _feedback.value = notice
+                            onResult(false, notice)
                             return@launch
                         }
                     }
                 } else {
                     sessionKeys.createEra(contact.id, profile.params)
                 }
+                // v0.4.2 (deep-scan, era counter): seed the map from the era
+                // we JUST created — the card used to flash "no key era" for
+                // the new contact until the async loadEras query landed.
+                _eras.update { it + (contact.id to listOf(era)) }
                 loadEras(contact.id, notify = false)
-                _feedback.value = "Contact created"
+                _feedback.value = UiNotice(R.string.contact_feedback_created, null)
                 onResult(true, null)
             } catch (e: Ck1FormatException) {
-                val message = "Invalid invite code: ${e.message}"
-                _feedback.value = message
-                onResult(false, message)
+                val notice = UiNotice(R.string.contact_invalid_invite, e.message ?: "")
+                _feedback.value = notice
+                onResult(false, notice)
             } catch (e: IllegalArgumentException) {
-                val message = e.message ?: "Invalid contact"
-                _feedback.value = message
-                onResult(false, message)
+                val notice = e.message?.let { UiNotice(R.string.contact_creation_invalid, it) }
+                    ?: UiNotice(R.string.contact_creation_failed, null)
+                _feedback.value = notice
+                onResult(false, notice)
             }
         }
     }
@@ -187,8 +224,14 @@ class ContactsViewModel @Inject constructor(
         val id = dialogContactId ?: return
         viewModelScope.launch {
             val key = biometricContactKeyFor(id) ?: return@launch
-            if (!biometricStore.hasWrapped(key)) return@launch
+            if (!biometricStore.hasWrapped(key)) {
+                // v0.4.2 (deep-scan N2): the visible offer was computed for
+                // an older era — retract it instead of dead-tapping silently.
+                _biometricOffered.value = false
+                return@launch
+            }
             _dialogNotice.value = null
+            pendingPromptKey = key
             _biometricPrompt.value = BiometricPromptRequest.Unlock(key)
         }
     }
@@ -206,6 +249,20 @@ class ContactsViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
+            // v0.4.2 (deep-scan N2 guard): the era may have rotated between
+            // showing the prompt and touching the sensor — the unwrapped
+            // bytes then belong to the OLD era and must never activate as
+            // the new era's session key. Discard the wrap, say so honestly.
+            val requestedKey = pendingPromptKey
+            pendingPromptKey = null
+            val currentKey = biometricContactKeyFor(id)
+            if (requestedKey != null && currentKey != null && requestedKey != currentKey) {
+                keyBytes.fill(0)
+                biometricStore.clear(requestedKey)
+                _dialogNotice.value = UiNotice(R.string.notice_biometric_stale, null)
+                _biometricOffered.value = false
+                return@launch
+            }
             val key = biometricContactKeyFor(id)
             when (messageCipher.unlockContactWithKey(id, keyBytes)) {
                 UnlockOutcome.Unlocked, UnlockOutcome.AlreadyUnlocked -> {
@@ -283,7 +340,7 @@ class ContactsViewModel @Inject constructor(
             // Deep-scan finding 15: the fingerprint cache belonged to the
             // unlocked session that no longer exists.
             _fingerprints.update { it - contactId }
-            _feedback.value = "Contact deleted"
+            _feedback.value = UiNotice(R.string.contact_feedback_deleted, null)
         }
     }
 

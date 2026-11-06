@@ -33,6 +33,12 @@ class MainViewModel @Inject constructor(
 
     init {
         refresh()
+        // v0.4.2 (deep-scan N1): the Home "Unlocked: N" chip used to keep
+        // its count until the next resume — a lockAll() or a timeout in
+        // another tab left it claiming sessions that were already wiped.
+        viewModelScope.launch {
+            messageCipher.sessionChanges.collect { refresh() }
+        }
     }
 
     fun refresh() {

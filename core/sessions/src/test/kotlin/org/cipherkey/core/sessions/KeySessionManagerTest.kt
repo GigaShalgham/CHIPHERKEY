@@ -294,5 +294,58 @@ class KeySessionManagerTest {
         assertEquals(23, s1.fingerprint.length)
     }
 
+    // ------------------------------------------------- v0.4.2 sessionChanges
+
+    /**
+     * v0.4.2 (deep-scan N1): every state change must bump the counter the
+     * UIs collect to re-read "who is unlocked" — and a no-op must not.
+     */
+    @Test
+    fun `sessionChanges bumps on activate lock and lockAll`() = runTest {
+        val manager = manager()
+        val before = manager.sessionChanges.value
+
+        unlock(manager, contactA, "passphrase", 1)
+        val afterActivate = manager.sessionChanges.value
+        assertTrue(afterActivate > before)
+
+        assertTrue(manager.lock(contactA))
+        val afterLock = manager.sessionChanges.value
+        assertTrue(afterLock > afterActivate)
+
+        // Nothing left to lock: lockAll is a no-op and must NOT bump.
+        assertEquals(0, manager.lockAll())
+        assertEquals(afterLock, manager.sessionChanges.value)
+
+        // With something to wipe, lockAll bumps again.
+        unlock(manager, contactB, "passphrase", 2)
+        assertEquals(1, manager.lockAll())
+        assertTrue(manager.sessionChanges.value > afterLock)
+    }
+
+    /** The lazy expiry path inside activeSession must bump too. */
+    @Test
+    fun `sessionChanges bumps on lazy expiry`() = runTest {
+        val manager = manager()
+        unlock(manager, contactA, "passphrase", 1)
+        val before = manager.sessionChanges.value
+
+        time.now += 60_001
+        assertNull(manager.activeSession(contactA))
+        assertTrue(manager.sessionChanges.value > before)
+    }
+
+    /** The background sweeper's expiry must bump the counter as well. */
+    @Test
+    fun `sessionChanges bumps on sweep`() = runTest {
+        val manager = manager()
+        unlock(manager, contactA, "passphrase", 1)
+        val before = manager.sessionChanges.value
+
+        time.now += 60_001
+        assertEquals(1, manager.sweepExpired())
+        assertTrue(manager.sessionChanges.value > before)
+    }
+
     private fun salt(seed: Int) = ByteArray(16) { ((it + seed * 7) % 256).toByte() }
 }

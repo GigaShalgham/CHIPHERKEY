@@ -1,5 +1,7 @@
 package org.cipherkey.data.repository
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.cipherkey.core.common.ContactId
@@ -107,6 +109,20 @@ class MessageCipher(
     private val sessionTimeout: SessionTimeoutSource,
     private val dispatchers: DispatcherProvider,
 ) {
+
+    /**
+     * v0.4.2 (deep-scan N1/N2): emits after every unlock, lock, expiry sweep
+     * and key-era rotation (create / import / delete) — the single signal
+     * open screens collect to re-read WHO is actually unlocked instead of
+     * trusting a snapshot taken when their screen opened. Before this, a
+     * lockAll() or a timeout in another surface left the Encrypt tab showing
+     * its button with no unlock card, and a companion sheet kept offering a
+     * fingerprint wrap of a rotated era.
+     */
+    val sessionChanges: Flow<Unit> = combine(
+        sessions.sessionChanges,
+        sessionKeys.eraChanges,
+    ) { _, _ -> }
 
     /**
      * Unlocks the contact's current era with the shared passphrase.

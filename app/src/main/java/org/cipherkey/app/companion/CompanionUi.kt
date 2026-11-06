@@ -282,8 +282,15 @@ private fun ContactDropdown(
             contacts.forEach { contact ->
                 DropdownMenuItem(
                     text = {
+                        // v0.4.2 (deep-scan): the lock glyph comes from the
+                        // shared string resources now — it was a hardcoded
+                        // emoji literal that only matched the English build.
                         Text(
-                            (if (contact.id in unlocked) "🔓  " else "🔒  ") + contact.displayName,
+                            (if (contact.id in unlocked) {
+                                stringResource(R.string.contact_unlocked)
+                            } else {
+                                stringResource(R.string.contact_locked)
+                            }) + "  " + contact.displayName,
                         )
                     },
                     onClick = {

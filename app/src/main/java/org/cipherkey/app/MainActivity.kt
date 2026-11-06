@@ -1,6 +1,7 @@
 package org.cipherkey.app
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -44,6 +45,13 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // v0.4.2 (deep-scan, FLAG_SECURE): CipherKey's surfaces show decrypted
+        // plaintext and passphrase fields — keep them out of screenshots and
+        // the recents thumbnail preview.
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.FLAG_SECURE,
+        )
         setContent {
             androidx.compose.runtime.CompositionLocalProvider(
                 LocalBiometrics provides biometrics,

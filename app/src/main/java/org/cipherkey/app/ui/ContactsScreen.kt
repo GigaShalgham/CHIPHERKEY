@@ -121,24 +121,22 @@ fun ContactsScreen(viewModel: ContactsViewModel, biometrics: BiometricKeyStore) 
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(vertical = 12.dp),
             )
-            feedback?.let { message ->
+            feedback?.let { notice ->
+                val text = notice.arg?.let { stringResource(notice.res, it) }
+                    ?: stringResource(notice.res)
                 Text(
-                    text = message,
+                    text = text,
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
             if (contacts.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.contacts_empty_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(top = 24.dp),
-                )
-                Text(
-                    text = stringResource(R.string.contacts_empty_body),
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                EmptyState(
+                    icon = CipherKeyIcons.People,
+                    title = stringResource(R.string.contacts_empty_title),
+                    body = stringResource(R.string.contacts_empty_body),
+                    modifier = Modifier.padding(top = 16.dp),
                 )
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -164,8 +162,10 @@ fun ContactsScreen(viewModel: ContactsViewModel, biometrics: BiometricKeyStore) 
         AddContactDialog(
             onDismiss = { showAddDialog = false },
             onCreate = { name, invite, profile, onDone ->
-                viewModel.createContact(name, invite, profile) { ok, _ ->
-                    onDone(ok)
+                viewModel.createContact(name, invite, profile) { ok, detail ->
+                    // v0.4.2 (deep-scan N3): pass the DETAILED notice through
+                    // — the dialog used to discard it for a generic message.
+                    onDone(ok, detail)
                     if (ok) showAddDialog = false
                 }
             },
@@ -254,7 +254,7 @@ private fun ContactCard(
 @Composable
 private fun AddContactDialog(
     onDismiss: () -> Unit,
-    onCreate: (String, String?, Argon2Profile, (Boolean) -> Unit) -> Unit,
+    onCreate: (String, String?, Argon2Profile, (Boolean, UiNotice?) -> Unit) -> Unit,
     onCopyPassphrase: (String) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
@@ -264,10 +264,12 @@ private fun AddContactDialog(
     // Deep-scan finding 6: failures are shown INSIDE the dialog — the
     // home-screen feedback column is behind the scrim and was invisible at
     // the moment the error happened.
-    var error by remember { mutableStateOf<String?>(null) }
-    // v0.4.1 CI fix: stringResource cannot be called inside the non-composable
-    // onCreate callback — hoist it into composable scope.
-    val creationFailedText = stringResource(R.string.contact_creation_failed)
+    //
+    // v0.4.2 (deep-scan N3): the ViewModel's DETAILED notice is stored as a
+    // typed UiNotice (no stringResource inside the non-composable callback);
+    // a null notice falls back to the generic failure line on render.
+    var errorNotice by remember { mutableStateOf<UiNotice?>(null) }
+    var failed by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
@@ -287,20 +289,23 @@ private fun AddContactDialog(
                     value = invite,
                     onValueChange = {
                         invite = it
-                        error = null
+                        failed = false
                     },
                     label = { Text(stringResource(R.string.contact_invite_label)) },
                     singleLine = true,
-                    isError = error != null,
+                    isError = failed,
                 )
                 Text(
                     stringResource(R.string.contact_invite_help),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                error?.let { message ->
+                if (failed) {
                     Text(
-                        text = message,
+                        text = errorNotice?.let { notice ->
+                            notice.arg?.let { stringResource(notice.res, it) }
+                                ?: stringResource(notice.res)
+                        } ?: stringResource(R.string.contact_creation_failed),
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -342,10 +347,14 @@ private fun AddContactDialog(
                 enabled = name.isNotBlank() && !busy,
                 onClick = {
                     busy = true
-                    error = null
-                    onCreate(name, invite.ifBlank { null }, profile) { ok ->
+                    failed = false
+                    errorNotice = null
+                    onCreate(name, invite.ifBlank { null }, profile) { ok, detail ->
                         busy = false
-                        if (!ok) error = creationFailedText
+                        if (!ok) {
+                            failed = true
+                            errorNotice = detail
+                        }
                     }
                 },
             ) { Text(stringResource(R.string.contact_create)) }

@@ -91,8 +91,40 @@ class ToolsViewModel @Inject constructor(
     /** v0.3.0: contact unlocked most recently (biometric remember target). */
     private var lastUnlockedContactId: ContactId? = null
 
+    /**
+     * v0.4.2 (deep-scan N2 guard): the "contactId:eraId" key the outstanding
+     * fingerprint prompt unwraps. If the era rotates between showing the
+     * prompt and the user touching the sensor, the wrapped bytes belong to
+     * the OLD era and must never be activated for the new one.
+     */
+    private var pendingPromptKey: String? = null
+
     init {
         refresh()
+        // v0.4.2 (deep-scan N1): lockAll(), the 60s expiry sweeper or an era
+        // rotation in another surface used to leave this tab's `unlocked`
+        // snapshot stale — the Encrypt button stayed up with no unlock card.
+        // Re-read the live state on every session/era change instead.
+        viewModelScope.launch {
+            messageCipher.sessionChanges.collect { resyncUnlockState() }
+        }
+    }
+
+    /**
+     * v0.4.2 (deep-scan N1): drops contacts that are no longer unlocked
+     * (locked elsewhere, expired, or their era rotated) so the UI re-locks
+     * immediately instead of on the next action.
+     */
+    private fun resyncUnlockState() {
+        launchSafely {
+            val live = _state.value.contacts.map { it.id }
+                .filter { messageCipher.isUnlocked(it) }
+                .toSet()
+            _state.value = _state.value.copy(unlocked = live)
+            // An unlock card that is on screen may have become wrong (the
+            // wrap it offers could be bound to a rotated era).
+            if (_state.value.unlockNeeded) refreshBiometricOffer()
+        }
     }
 
     /** Loads contacts and their unlock status. */
@@ -246,7 +278,13 @@ class ToolsViewModel @Inject constructor(
         val id = _state.value.pendingContactId ?: _state.value.selectedContactId ?: return
         launchSafely {
             val contactKey = biometricContactKeyFor(id) ?: return@launchSafely
-            if (!biometricStore.hasWrapped(contactKey)) return@launchSafely
+            if (!biometricStore.hasWrapped(contactKey)) {
+                // v0.4.2 (deep-scan N2): the offer was computed for an older
+                // era — drop it instead of dead-tapping the button silently.
+                _state.value = _state.value.copy(biometricOffered = false)
+                return@launchSafely
+            }
+            pendingPromptKey = contactKey
             _state.value = _state.value.copy(
                 biometricPrompt = BiometricPromptRequest.Unlock(contactKey),
             )
@@ -268,6 +306,24 @@ class ToolsViewModel @Inject constructor(
             return
         }
         launchSafely {
+            // v0.4.2 (deep-scan N2 guard): the era may have rotated between
+            // showing the prompt and touching the sensor. A wrap of the OLD
+            // era must never be activated as the NEW era's key — discard it
+            // and fall back to the passphrase, honestly.
+            val requestedKey = pendingPromptKey
+            pendingPromptKey = null
+            val currentKey = biometricContactKeyFor(id)
+            if (requestedKey != null && currentKey != null && requestedKey != currentKey) {
+                keyBytes.fill(0)
+                biometricStore.clear(requestedKey)
+                _state.value = _state.value.copy(
+                    busy = false,
+                    unlockNeeded = true,
+                    biometricOffered = false,
+                    notice = UiNoticeOf(R.string.notice_biometric_stale),
+                )
+                return@launchSafely
+            }
             val contactKey = biometricContactKeyFor(id)
             when (messageCipher.unlockContactWithKey(id, keyBytes)) {
                 UnlockOutcome.Unlocked, UnlockOutcome.AlreadyUnlocked -> {

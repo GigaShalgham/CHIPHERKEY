@@ -1,6 +1,9 @@
 package org.cipherkey.data.repository
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -37,6 +40,17 @@ class SessionKeyRepository(
     private val dispatchers: DispatcherProvider,
 ) {
 
+    /**
+     * v0.4.2 (deep-scan N2): monotonic counter bumped whenever an era is
+     * created, imported or deleted. A rotation changes which session key is
+     * "current" without touching the in-memory session manager — open UIs
+     * (e.g. a companion sheet in split screen) need this signal to drop
+     * their stale "unlocked" snapshot and stop offering a fingerprint wrap
+     * bound to the OLD era.
+     */
+    private val _eraChanges = MutableStateFlow(0L)
+    val eraChanges: StateFlow<Long> = _eraChanges.asStateFlow()
+
     /** Creates a brand-new era (fresh keyId + salt) for the contact. */
     suspend fun createEra(contactId: ContactId, params: Argon2Params): ContactSession =
         withContext(dispatchers.io) {
@@ -54,6 +68,7 @@ class SessionKeyRepository(
                 lastUsedAt = null,
             )
             sessionKeyDao.upsert(entity)
+            _eraChanges.value += 1L
             entity.toDomain()
         }
 
@@ -96,6 +111,7 @@ class SessionKeyRepository(
                     EraImport.KeyBelongsToOtherContact
                 }
             }
+            _eraChanges.value += 1L
             EraImport.Imported(entity.toDomain())
         }
 
@@ -141,6 +157,7 @@ class SessionKeyRepository(
 
     suspend fun deleteAllForContact(contactId: ContactId) = withContext(dispatchers.io) {
         sessionKeyDao.deleteByContact(contactId.value)
+        _eraChanges.value += 1L
     }
 
     private fun SessionKeyEntity.toDomain() = ContactSession(

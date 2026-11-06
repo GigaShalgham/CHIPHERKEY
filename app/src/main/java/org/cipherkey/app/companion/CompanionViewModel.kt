@@ -117,6 +117,44 @@ class CompanionViewModel @Inject constructor(
     /** v0.3.0: what to run after a successful biometric unlock. */
     private var afterUnlock: (suspend () -> Unit)? = null
 
+    /**
+     * v0.4.2 (deep-scan N2 guard): the "contactId:eraId" key the outstanding
+     * fingerprint prompt unwraps — checked again when the sensor confirms, so
+     * a wrap of a ROTATED era can never be activated as the new era's key.
+     */
+    private var pendingPromptKey: String? = null
+
+    init {
+        // v0.4.2 (deep-scan N2): the sheet used to snapshot `unlocked` when
+        // the flow began and keep it forever. A lockAll(), a session timeout
+        // or a key-era rotation in another surface (split screen, the
+        // floating assistant) then left it claiming the contact was open —
+        // and offering a fingerprint wrap bound to the OLD era. Re-read the
+        // live state on every session/era change instead.
+        viewModelScope.launch {
+            messageCipher.sessionChanges.collect { resyncSessionState() }
+        }
+    }
+
+    /**
+     * v0.4.2 (deep-scan N2): drops stale `unlocked` entries and recomputes
+     * the fingerprint offer for the phase that is on screen.
+     */
+    private fun resyncSessionState() {
+        launchSafely {
+            val live = _state.value.contacts.map { it.id }
+                .filter { messageCipher.isUnlocked(it) }
+                .toSet()
+            _state.value = _state.value.copy(unlocked = live)
+            val phase = _state.value.phase
+            if (phase == CompanionUiState.Phase.NeedsUnlock ||
+                phase == CompanionUiState.Phase.Prepare
+            ) {
+                refreshBiometricOffer()
+            }
+        }
+    }
+
     // ------------------------------------------------------------ entry
 
     /**
@@ -275,7 +313,13 @@ class CompanionViewModel @Inject constructor(
     fun requestBiometricUnlock() {
         launchSafely {
             val contactKey = currentBiometricContactKey() ?: return@launchSafely
-            if (!biometrics.hasWrapped(contactKey)) return@launchSafely
+            if (!biometrics.hasWrapped(contactKey)) {
+                // v0.4.2 (deep-scan N2): the visible offer was computed for
+                // an older era — retract it instead of dead-tapping silently.
+                _state.value = _state.value.copy(biometricOffered = false)
+                return@launchSafely
+            }
+            pendingPromptKey = contactKey
             _state.value = _state.value.copy(
                 biometricPrompt = BiometricPromptRequest.Unlock(contactKey),
             )
@@ -301,6 +345,25 @@ class CompanionViewModel @Inject constructor(
             return
         }
         launchSafely {
+            // v0.4.2 (deep-scan N2 guard): the era may have rotated between
+            // showing the prompt and touching the sensor — the unwrapped
+            // bytes then belong to the OLD era and must never activate as
+            // the new era's session key. Discard the wrap, say so honestly.
+            val requestedKey = pendingPromptKey
+            pendingPromptKey = null
+            val currentKey = biometricContactKeyFor(contactId)
+            if (requestedKey != null && currentKey != null && requestedKey != currentKey) {
+                keyBytes.fill(0)
+                biometrics.clear(requestedKey)
+                afterUnlock = null
+                _state.value = _state.value.copy(
+                    busy = false,
+                    biometricOffered = false,
+                    phase = CompanionUiState.Phase.NeedsUnlock,
+                    notice = UiNotice(R.string.notice_biometric_stale),
+                )
+                return@launchSafely
+            }
             val contactKey = biometricContactKeyFor(contactId)
             val outcome = messageCipher.unlockContactWithKey(contactId, keyBytes)
             when (outcome) {

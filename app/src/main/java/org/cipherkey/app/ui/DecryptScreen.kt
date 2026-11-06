@@ -20,6 +20,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -47,7 +48,9 @@ fun DecryptScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val promptHelper = rememberBiometricPromptHelper(biometrics)
-    var input by remember { mutableStateOf("") }
+    // v0.4.2 (deep-scan): rememberSaveable — a rotation used to wipe the
+    // pasted envelope. (Passphrase fields are deliberately NOT saved.)
+    var input by rememberSaveable { mutableStateOf("") }
 
     LaunchedEffect(Unit) { viewModel.refresh() }
     // The Remember prompt's key export is awaited INSIDE the host's effect

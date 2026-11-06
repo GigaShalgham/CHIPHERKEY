@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -20,7 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -46,7 +45,10 @@ fun EncryptScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val promptHelper = rememberBiometricPromptHelper(biometrics)
-    var input by remember { mutableStateOf("") }
+    // v0.4.2 (deep-scan): rememberSaveable — a rotation used to wipe the
+    // typed draft. (Passphrase fields are deliberately NOT saved: view-state
+    // must never hold a passphrase longer than the interaction itself.)
+    var input by rememberSaveable { mutableStateOf("") }
 
     LaunchedEffect(Unit) { viewModel.refresh() }
     // The Remember prompt's key export is awaited INSIDE the host's effect
@@ -74,7 +76,11 @@ fun EncryptScreen(
         BusyLine(visible = state.busy)
 
         if (state.contacts.isEmpty()) {
-            EmptyStateCard()
+            EmptyState(
+                icon = CipherKeyIcons.People,
+                title = stringResource(R.string.contacts_empty_title),
+                body = stringResource(R.string.contacts_empty_body),
+            )
         } else {
             SectionCard(title = stringResource(R.string.tools_input_label)) {
                 OutlinedTextField(
@@ -169,27 +175,6 @@ private fun UnlockCard(
                 enabled = !state.busy,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.use_fingerprint)) }
-        }
-    }
-}
-
-/** No contacts yet — the tab needs at least one contact to work. */
-@Composable
-private fun EmptyStateCard() {
-    Card {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                stringResource(R.string.contacts_empty_title),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                stringResource(R.string.contacts_empty_body),
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

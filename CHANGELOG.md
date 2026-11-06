@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2-alpha] - 2026-11-06 — deep-scan fixes: reactive re-lock, era-change resync, honest errors
+
+Second on-device follow-up: a deep scan of the v0.4.1 UI found two HIGH
+stale-state bugs, two MEDIUM honesty bugs and a set of LOW polish items.
+All addressed; no schema, permission or wire change.
+
+### Fixed
+
+- **HIGH (N1) — the UI forgot to re-lock.** The in-app Encrypt/Decrypt tabs
+  and the Contacts screen snapshotted "who is unlocked" once and never
+  re-read it: after "Lock all sessions now" (Settings), a session timeout
+  or the 60-second expiry sweeper, the Encrypt tab kept showing its Encrypt
+  button with NO unlock card until the user tapped something. `KeySessionManager`
+  now exposes a monotonic `sessionChanges` StateFlow (bumped on every
+  activate/lock/lockAll/expiry), `SessionKeyRepository` an `eraChanges`
+  counter, and `MessageCipher` combines both into one `sessionChanges`
+  signal that Tools/Contacts/Companion ViewModels collect to re-read the
+  live unlock state. Locking anywhere now re-locks every visible surface
+  immediately.
+- **HIGH (N2) — stale "unlocked" + wrong fingerprint offer after an era
+  change.** A companion sheet (selection toolbar / sharesheet / floating
+  assistant) kept claiming its contact was unlocked after the contact's key
+  era rotated, and kept offering a fingerprint wrap bound to the OLD era.
+  The sheet now resyncs on every session/era change; an offer whose wrap no
+  longer matches the current era is retracted instead of dead-tapping; and
+  the prompt's "contactId:eraId" key is re-checked when the sensor confirms,
+  so a wrap of a rotated era can never be activated as the new era's key
+  (it is discarded with the honest "out of date" notice).
+- **MEDIUM (N3) — the Add dialog masked the real error.** The dialog
+  discarded the ViewModel's detailed failure ("This invite key already
+  belongs to another contact", "Invalid invite code: …") and printed a
+  generic "Creation failed". The detailed notice now flows through as a
+  typed `UiNotice` rendered from string resources.
+- **MEDIUM — wrong "no key era" count for brand-new contacts.** A just-created
+  contact's card flashed "no key era" until the async era query landed. The
+  map is now seeded synchronously from the era that `createContact` just
+  created or imported.
+- **LOW — hardcoded English strings** in ContactsViewModel feedback/errors
+  and the companion contact dropdown's lock glyphs are now string resources.
+
+### Security
+
+- **FLAG_SECURE on MainActivity** (the companion activities already had it):
+  decrypted plaintext and passphrase fields can no longer leak through
+  screenshots or the recents preview of the main app.
+
+### Changed
+
+- **Theme**: a deliberate type scale (`Typography`) joins the v0.4.1 color
+  schemes and shapes — same titles/body/label weights everywhere instead of
+  per-screen `fontSize` guesses.
+- **Components**: `SectionCard` is outlined (1dp `outline` border, no drop
+  shadow); `StatusChip` uses distinct container roles (positive =
+  `primaryContainer`, informational = `secondaryContainer` — the two Home
+  chips no longer blur together); `NoticeBanner` is a real banner
+  (`errorContainer` background) instead of a bare error-colored line;
+  `QuickActionTile` uses a real 8dp gap instead of two literal spaces
+  inside the label text.
+- **EmptyState** (icon + title + body on a tonal surface) replaces the bare
+  left-aligned text pairs on the Contacts and Encrypt screens.
+- **Rotation resilience**: the Encrypt/Decrypt input fields are
+  `rememberSaveable` — a rotation no longer wipes the typed draft or the
+  pasted envelope. Passphrase fields are deliberately NOT saved: view state
+  must never outlive the interaction that typed it.
+
+### Compatibility
+
+- No database, preference, permission or CK1 wire-format change;
+  versionCode 8. Old-key-era decryption, the passphrase advisor and the
+  biometric gate behave exactly as in 0.4.1-alpha.
+
 ## [0.4.1-alpha] - 2026-11-06 — device-feedback fixes: design, tutorials, passphrase suggestion, biometrics
 
 Four pieces of on-device feedback against v0.4.0-alpha, all addressed.

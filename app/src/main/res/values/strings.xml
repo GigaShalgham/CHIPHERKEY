@@ -141,6 +141,13 @@
     <string name="contact_no_era">No key era yet.</string>
     <string name="contact_era_count_none">no key era</string>
     <string name="contact_era_count">%1$d key era(s)</string>
+    <!-- v0.4.2: contacts feedback + honest creation errors (were hardcoded
+         English strings inside the ViewModel) -->
+    <string name="contact_feedback_created">Contact created</string>
+    <string name="contact_feedback_deleted">Contact deleted</string>
+    <string name="contact_invite_key_conflict">This invite key already belongs to another contact.</string>
+    <string name="contact_invalid_invite">Invalid invite code: %1$s</string>
+    <string name="contact_creation_invalid">Couldn\'t create the contact: %1$s</string>
     <string name="contact_state_unlocked">Unlocked</string>
     <string name="contact_state_locked">Locked</string>
     <string name="contact_delete_confirm">Delete this contact and all its key data?</string>

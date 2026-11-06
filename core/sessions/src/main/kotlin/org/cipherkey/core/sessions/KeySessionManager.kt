@@ -1,6 +1,9 @@
 package org.cipherkey.core.sessions
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -54,6 +57,23 @@ class KeySessionManager(
         val sessionKey: SessionKey,
         val expiresAtMillis: Long,
     )
+
+    /**
+     * v0.4.2 (deep-scan N1/N2): monotonic change counter for the manager's
+     * state — bumped on every activate, lock, lockAll and expiry (lazy or
+     * swept). Screens used to snapshot "who is unlocked" once and then miss
+     * a lockAll() or a timeout that happened in another surface: the Encrypt
+     * tab kept its button up with no unlock card, and an open companion
+     * sheet kept offering a fingerprint wrap of a rotated era. Collectors of
+     * this flow re-read the live state instead.
+     */
+    private val _sessionChanges = MutableStateFlow(0L)
+    val sessionChanges: StateFlow<Long> = _sessionChanges.asStateFlow()
+
+    /** Must be called while holding [mutex]. */
+    private fun bumpSessionChangesLocked() {
+        _sessionChanges.value += 1L
+    }
 
     companion object {
         /**
@@ -113,6 +133,7 @@ class KeySessionManager(
             keyBytes = keyBytes.copyOf(),
         )
         active[contactId] = Entry(sessionKey, timeSource.nowMillis() + timeoutMillis)
+        bumpSessionChangesLocked()
         sessionKey
     }
 
@@ -126,6 +147,7 @@ class KeySessionManager(
         if (entry.expiresAtMillis <= timeSource.nowMillis()) {
             active.remove(contactId)
             wipe(entry.sessionKey)
+            bumpSessionChangesLocked()
             return@withLock null
         }
         entry.sessionKey
@@ -175,6 +197,7 @@ class KeySessionManager(
             keyBytes = keyBytes.copyOf(),
         )
         historical[sessionId] = HistEntry(contactId, sessionKey, timeSource.nowMillis() + timeoutMillis)
+        bumpSessionChangesLocked()
         sessionKey
     }
 
@@ -189,6 +212,7 @@ class KeySessionManager(
         if (entry.expiresAtMillis <= timeSource.nowMillis()) {
             historical.remove(sessionId)
             wipe(entry.sessionKey)
+            bumpSessionChangesLocked()
             return@withLock null
         }
         entry.sessionKey
@@ -216,6 +240,7 @@ class KeySessionManager(
                 existed = true
             }
         }
+        if (existed) bumpSessionChangesLocked()
         existed
     }
 
@@ -230,6 +255,7 @@ class KeySessionManager(
         count += historical.size
         historical.values.forEach { wipe(it.sessionKey) }
         historical.clear()
+        if (count > 0) bumpSessionChangesLocked()
         count
     }
 
@@ -279,6 +305,7 @@ class KeySessionManager(
                 swept++
             }
         }
+        if (swept > 0) bumpSessionChangesLocked()
         return swept
     }
 }

@@ -1,11 +1,14 @@
 package org.cipherkey.app.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -15,6 +18,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,11 +27,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.cipherkey.app.R
@@ -40,14 +44,26 @@ import org.cipherkey.security.policies.PassphraseAdvisor
  * inputs, headers, busy rows and notice banners.
  */
 
-/** Titled card group used by every screen. */
+/**
+ * Titled card group used by every screen.
+ *
+ * v0.4.2 (deep-scan): outlined instead of elevated — a 1dp outline-colored
+ * border reads calmer than a drop shadow and stays consistent with the
+ * container-based contact cards. The border uses `outline` (a role our
+ * schemes define) so no role ever falls back to the baseline purple.
+ */
 @Composable
 fun SectionCard(
     title: String,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    Card(modifier = modifier.fillMaxWidth()) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.outlinedCardColors(),
+        elevation = CardDefaults.outlinedCardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+    ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -58,7 +74,15 @@ fun SectionCard(
     }
 }
 
-/** Small colored status pill ("Unlocked: 2" / "All sessions locked"). */
+/**
+ * Small status pill ("Unlocked: 2" / "Contacts: 0").
+ *
+ * v0.4.2 (deep-scan): the two tones now use DISTINCT container roles —
+ * positive states read brand indigo (primaryContainer), neutral
+ * information reads slate (secondaryContainer). They used to share
+ * surfaceVariant for everything non-positive, which made an informational
+ * "Contacts: 0" chip look like a warning and let both chips blur together.
+ */
 @Composable
 fun StatusChip(
     text: String,
@@ -68,9 +92,14 @@ fun StatusChip(
     val bg = if (positive) {
         MaterialTheme.colorScheme.primaryContainer
     } else {
-        MaterialTheme.colorScheme.surfaceVariant
+        MaterialTheme.colorScheme.secondaryContainer
     }
-    androidx.compose.material3.Surface(
+    val fg = if (positive) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    }
+    Surface(
         color = bg,
         shape = MaterialTheme.shapes.small,
         modifier = modifier,
@@ -78,17 +107,20 @@ fun StatusChip(
         Text(
             text = text,
             fontSize = 12.sp,
-            color = if (positive) {
-                MaterialTheme.colorScheme.onPrimaryContainer
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
+            fontWeight = FontWeight.Medium,
+            color = fg,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
         )
     }
 }
 
-/** Square quick-action button with icon + label (Home screen grid). */
+/**
+ * Square quick-action button with icon + label (Home screen grid).
+ *
+ * v0.4.2 (deep-scan): the icon-to-label gap used to be two literal spaces
+ * inside the text ("  " + label) — which collapses or doubles depending on
+ * the font and never aligned. A real 8dp spacer does.
+ */
 @Composable
 fun QuickActionTile(
     label: String,
@@ -103,7 +135,52 @@ fun QuickActionTile(
         modifier = modifier.fillMaxWidth(),
     ) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-        Text("  " + label, maxLines = 1)
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(label, maxLines = 1)
+    }
+}
+
+/**
+ * v0.4.2 (deep-scan): shared empty-state block — icon + title + body on a
+ * quiet tonal surface, centered. Replaces the bare left-aligned text pairs
+ * the Contacts and Encrypt screens used to render.
+ */
+@Composable
+fun EmptyState(
+    icon: ImageVector,
+    title: String,
+    body: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.medium,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(32.dp),
+                tint = MaterialTheme.colorScheme.outline,
+            )
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                body,
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
@@ -241,19 +318,31 @@ fun BusyRow(label: String) {
     }
 }
 
-/** Inline error banner for typed notices. */
+/**
+ * Inline error banner for typed notices.
+ *
+ * v0.4.2 (deep-scan): now an actual banner — errorContainer background
+ * with onErrorContainer text — instead of a bare error-colored line that
+ * vanished against similarly colored helper text.
+ */
 @Composable
 fun NoticeBanner(notice: UiNotice?) {
     if (notice == null) return
     val text = notice.arg?.let { arg ->
-        androidx.compose.ui.res.stringResource(notice.res, arg)
-    } ?: androidx.compose.ui.res.stringResource(notice.res)
-    Text(
-        text = text,
-        fontSize = 13.sp,
-        color = MaterialTheme.colorScheme.error,
+        stringResourceCompat(notice.res, arg)
+    } ?: stringResourceCompat(notice.res)
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        shape = MaterialTheme.shapes.small,
         modifier = Modifier.fillMaxWidth(),
-    )
+    ) {
+        Text(
+            text = text,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+        )
+    }
 }
 
 /** Thin indeterminate progress line shown while busy. */

@@ -132,4 +132,37 @@ class SessionKeyRepositoryTest {
             assertEquals(expectedWinner.sessionId, device.sessionKeys.latestEra(contact.id)?.sessionId)
         }
     }
+
+    /**
+     * v0.4.2 (deep-scan N2): era writes bump the counter open UIs collect to
+     * drop their stale "unlocked" snapshot and re-check the fingerprint
+     * offer. Reads and no-op imports must not bump it.
+     */
+    @Test
+    fun `eraChanges bumps on create import and delete only`() = runTest {
+        val device = TestDevice()
+        val contact = device.contacts.createContact("Bob")
+        val before = device.sessionKeys.eraChanges.value
+
+        // A read must not bump.
+        device.sessionKeys.latestEra(contact.id)
+        assertEquals(before, device.sessionKeys.eraChanges.value)
+
+        // Creating does.
+        device.sessionKeys.createEra(contact.id, TestDevice.FAST_PARAMS)
+        val afterCreate = device.sessionKeys.eraChanges.value
+        assertTrue(afterCreate > before)
+
+        // An idempotent re-import of the SAME key writes nothing: no bump.
+        val invite = InviteCodec.decode(
+            device.sessionKeys.latestEra(contact.id)!!.inviteCode,
+        )
+        val second = device.sessionKeys.importEra(contact.id, invite)
+        assertTrue(second is EraImport.AlreadyPresent)
+        assertEquals(afterCreate, device.sessionKeys.eraChanges.value)
+
+        // Deleting the contact's eras does.
+        device.sessionKeys.deleteAllForContact(contact.id)
+        assertTrue(device.sessionKeys.eraChanges.value > afterCreate)
+    }
 }
